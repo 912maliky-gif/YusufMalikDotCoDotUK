@@ -131,8 +131,20 @@
   .plate {
     position: relative;
     pointer-events: auto;
-    padding: 0.52em 1.15em;
+    --pad-x: 1.15em;
+    padding: 0.52em var(--pad-x);
     font-size: var(--big);
+
+    /* The room the broadest face needs, held as a floor the closing pill stops at
+       rather than a size it reaches for at the end. The words either side close as
+       you scroll and the pill closes with them — but it stops here instead of drawing
+       all the way in to the name, so the size it settles at on arrival is a size it
+       has already shrunk to. Applied at the moment of arrival instead, as it was, a
+       pill that had just finished closing sprang back open by the better part of a
+       letter. Now it only ever contracts. --floor is a multiple of the mark's own
+       size, measured from the faces once they have loaded; the padding is added back
+       because the box is border-box. */
+    min-width: calc(var(--floor, 0) * 1em + var(--pad-x) * 2);
     /* Rises from the middle of the window to rest near the top. It keeps its size and
        its shape the whole way — the slab is the bar, not something that turns into
        one. The distance depends on how tall it is, so it is measured, not assumed. */
@@ -295,27 +307,19 @@
     root.style.setProperty('--lift', p.toFixed(4));
 
     // Swiping is only offered once the mark has arrived; on the way there the pill's
-    // width belongs to the closing words, so any width pinned by a face swap is let
+    // height belongs to the closing words, so any height pinned by a face swap is let
     // go of again.
     const wasParked = parked;
     parked = p > 0.999;
 
     if (!parked) {
-      // On the way up the size belongs to the closing words, so anything pinned by a
-      // face swap is let go of again.
-      if (plate.style.width) { plate.style.width = ''; plate.style.height = ''; }
+      // On the way up the height belongs to the closing words, so anything pinned by
+      // a face swap is let go of again. The width asks for none of this: its floor is
+      // in the stylesheet and holds the whole way up.
+      if (plate.style.height) plate.style.height = '';
     } else if (!wasParked) {
-      // The moment it arrives, the size it has arrived at is the size it keeps.
-      if (boxWidth === null) {
-        const cs = getComputedStyle(plate);
-        const pad = parseFloat(cs.paddingLeft) * 2;
-        // widestInk is a multiple of the mark's own size, so it only becomes pixels
-        // once that size is known.
-        const needed = widestInk * parseFloat(cs.fontSize) + pad;
-        boxWidth = Math.max(plate.offsetWidth, Math.round(needed));
-      }
+      // The moment it arrives, the height it has arrived at is the height it keeps.
       boxHeight = boxHeight ?? plate.offsetHeight;
-      plate.style.width = `${boxWidth}px`;
       plate.style.height = `${boxHeight}px`;
     }
 
@@ -358,15 +362,16 @@
   let face = 0;
   let swapping = false;
   let parked = false;      // true once the mark has finished its climb
-  /* The pill's width, taken once when the mark first arrives and then held. Every face
-     is scaled towards the same width, but "towards" is not "exactly" — and a box that
-     breathes a few pixels each time you swipe reads as the box being unsure of itself.
-     Fixed, the faces change inside something that does not move. */
-  let boxWidth = null;
+  /* The pill's height, taken once when the mark first arrives and then held. A script
+     face with long ascenders asks for half again the line box of a plain one, and a
+     box that breathes each time you swipe reads as the box being unsure of itself.
+     Fixed, the faces change inside something that does not move. The width needs no
+     such bookkeeping — the floor in the stylesheet is the same for every face, and
+     every face fits inside it. */
   let boxHeight = null;
   /* How much room the broadest face needs once every face stands at the same height.
-     The box is cut to this rather than to the original mark, so no face has to shrink
-     to fit and the box still never changes. */
+     The box is floored at this rather than at the original mark, so no face has to
+     shrink to fit and the box still never changes. */
   let widestInk = 0;
 
   function applyFace(i) {
@@ -377,10 +382,9 @@
     measure();
 
     // Only ever pinned once the mark is parked, and never before: pinning it at load
-    // would record the width of the whole phrase, and a jump straight to the top
+    // would record the height of the whole phrase, and a jump straight to the top
     // rather than a scroll never passes through the state that would let it go again.
-    if (!parked) { plate.style.width = ''; plate.style.height = ''; return; }
-    plate.style.width = `${boxWidth}px`;
+    if (!parked) { plate.style.height = ''; return; }
     plate.style.height = `${boxHeight}px`;
   }
 
@@ -503,13 +507,18 @@
     // Held as a fraction of the probe's size rather than as pixels, because the mark
     // is not drawn at the size it was measured at — the window decides that.
     widestInk = Math.max(...FACES.map((f, i) => box[i].w * f.scale)) / PROBE * 1.03;
+    root.style.setProperty('--floor', widestInk.toFixed(4));
     applyFace(face);
+    // The floor changes how wide the pill is, and how wide it is decides how tall it
+    // is and so how far it has to climb. Measured again now rather than left until
+    // the next scroll event, which on a page opened part way down may never come.
+    frame();
   }
 
   addEventListener('scroll', onScroll, { passive: true });
   addEventListener('resize', () => {
-    boxWidth = boxHeight = null;
-    plate.style.width = plate.style.height = '';
+    boxHeight = null;
+    plate.style.height = '';
     parked = false;
     measure();
     frame();
