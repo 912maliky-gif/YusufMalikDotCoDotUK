@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>a MALIK product</title>
+<style>
+  /* Light is the plain state; dark is the one swap. Nothing else changes. */
+  :root {
+    --ground: #ffffff;
+    --mark:   #000000;
+    --muted:  rgba(0, 0, 0, 0.5);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #1c1c1e;
+      --mark:   #ffffff;
+      --muted:  rgba(255, 255, 255, 0.55);
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+
+  body {
+    background: var(--ground);
+    color: var(--mark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.35s ease, color 0.35s ease;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Every measurement below is a fraction of this, which is the one number that
+     changes with the window. The app sets the mark at 34pt against 15pt words with
+     7pt between them, so those proportions are kept rather than re-guessed. */
+  .wordmark {
+    --size: clamp(2rem, 7vw, 3.25rem);
+
+    display: flex;
+    align-items: baseline;
+    gap: calc(var(--size) * 0.206);
+    padding: 2rem;
+    visibility: hidden;          /* until the squeeze has been measured */
+  }
+  .wordmark.ready { visibility: visible; }
+
+  .article,
+  .noun {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    font-size: calc(var(--size) * 0.441);
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  .name {
+    font-family: "EB Garamond", Garamond, "Adobe Garamond Pro", "Hoefler Text", "Times New Roman", serif;
+    font-size: var(--size);
+    font-weight: 400;
+    letter-spacing: 0.044em;     /* 1.5pt at 34pt */
+    color: var(--mark);
+
+    /* Squeezed to 80% of its width, as the app sets it. A transform does not change
+       the space an element takes up, so the 10% left standing either side is taken
+       back below — measured rather than estimated, because the width depends on
+       which Garamond the machine actually has. */
+    display: inline-block;
+    transform: scaleX(0.8);
+  }
+</style>
+</head>
+<body>
+  <p class="wordmark">
+    <span class="article">a</span><span class="name">MALIK</span><span class="noun">product</span>
+  </p>
+
+<script>
+  // `offsetWidth` is the layout width, which the transform leaves alone — so this is
+  // the unsqueezed width, and a tenth of it is the blank now standing at each end.
+  function fit() {
+    const wordmark = document.querySelector('.wordmark');
+    const name = document.querySelector('.name');
+    name.style.marginInline = '0';
+    name.style.marginInline = `${-name.offsetWidth * 0.1}px`;
+    wordmark.classList.add('ready');
+  }
+
+  // After the font is in hand: measuring against the fallback would set the gaps for
+  // a face that is about to be replaced.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(fit);
+  } else {
+    window.addEventListener('load', fit);
+  }
+  window.addEventListener('resize', fit);
+</script>
+</body>
+</html>
