@@ -5,95 +5,217 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>a MALIK product</title>
 <style>
-  /* Light is the plain state; dark is the one swap. Nothing else changes. */
+  /* Registered so they can be used inside calc() and colour mixing, and so they hold
+     a sane value before the first scroll event lands. */
+  @property --pa { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --pb { syntax: '<number>'; inherits: true; initial-value: 0; }
+
   :root {
-    --ground: #ffffff;
-    --mark:   #000000;
-    --muted:  rgba(0, 0, 0, 0.5);
+    /* Two halves of the journey. The first settles the mark; the second carries it up
+       to the top of the window and spreads it into a bar. */
+    --pa: 0;
+    --pb: 0;
+
+    --big: clamp(2rem, 7vw, 3.25rem);
+    --bar: 1.35rem;
+
+    /* The mark's own colours, as the app sets them. */
+    --mark:  #000000;
+    --muted: rgba(0, 0, 0, 0.5);
+
+    /* Two grounds: the flat one the page opens on, and the softer one the raised slab
+       needs. Neumorphism cannot work against pure white — the highlight has nowhere
+       to go — so the page warms into it as you scroll rather than starting there. */
+    --ground-flat: #ffffff;
+    --ground-soft: #e9e6e0;
+
+    --plate:       #ebe8e2;
+    --plate-lit:   #f6f4f0;
+    --shadow-dark: rgba(160, 153, 141, 0.60);
+    --shadow-lit:  rgba(255, 255, 255, 0.95);
   }
+
   @media (prefers-color-scheme: dark) {
     :root {
-      --ground: #1c1c1e;
-      --mark:   #ffffff;
-      --muted:  rgba(255, 255, 255, 0.55);
+      --mark:  #ffffff;
+      --muted: rgba(255, 255, 255, 0.55);
+
+      --ground-flat: #1c1c1e;
+      --ground-soft: #232329;
+
+      --plate:       #26262d;
+      --plate-lit:   #2e2e37;
+      --shadow-dark: rgba(0, 0, 0, 0.62);
+      --shadow-lit:  rgba(66, 66, 80, 0.45);
     }
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; }
 
   body {
-    background: var(--ground);
+    background: color-mix(in srgb, var(--ground-soft) calc(var(--pa) * 100%), var(--ground-flat));
     color: var(--mark);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* The room to scroll through. The mark never travels down the page — the stage is
+     stuck to the top of the window while this passes behind it. */
+  .scroller { height: 300vh; height: 300svh; }
+
+  .stage {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100svh;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.35s ease, color 0.35s ease;
-    -webkit-font-smoothing: antialiased;
+    /* A full-height layer over the page: it must not swallow scrolling. */
+    pointer-events: none;
   }
 
-  /* Every measurement below is a fraction of this, which is the one number that
-     changes with the window. The app sets the mark at 34pt against 15pt words with
-     7pt between them, so those proportions are kept rather than re-guessed. */
-  .wordmark {
-    --size: clamp(2rem, 7vw, 3.25rem);
+  .plate {
+    position: relative;
+    pointer-events: auto;
+    padding: 0.72em 1.15em;
+    font-size: calc(var(--big) + (var(--bar) - var(--big)) * var(--pb));
+    /* Rises from the middle of the window to the top. The distance depends on how
+       tall the slab currently is, so it is measured rather than assumed. */
+    transform: translateY(calc(var(--rise, 0px) * var(--pb)));
+  }
 
+  /* The slab itself, behind the letters. A pseudo-element so it can fade, grow and
+     spread to the window's edges without dragging the text with it. */
+  .plate::before {
+    content: '';
+    position: absolute;
+    /* Negative side insets are what turn a pill into a full-width bar. */
+    top: 0;
+    bottom: 0;
+    left: calc(-1 * var(--bleed, 0px));
+    right: calc(-1 * var(--bleed, 0px));
+    border-radius: calc(0.62em * (1 - var(--pb)));
+    background: linear-gradient(145deg, var(--plate-lit), var(--plate));
+    box-shadow:
+      calc(0.34em * var(--pa)) calc(0.34em * var(--pa)) calc(0.7em * var(--pa)) var(--shadow-dark),
+      calc(-0.34em * var(--pa)) calc(-0.34em * var(--pa)) calc(0.7em * var(--pa)) var(--shadow-lit);
+    opacity: var(--pa);
+    transform: scale(calc(0.94 + 0.06 * var(--pa)));
+  }
+
+  .wordmark {
+    position: relative;   /* above the slab */
+    z-index: 1;
     display: flex;
     align-items: baseline;
-    gap: calc(var(--size) * 0.206);
-    padding: 2rem;
-    visibility: hidden;          /* until the squeeze has been measured */
+    /* Closes along with the words either side, so nothing is left holding the slab
+       open once they have gone. */
+    gap: calc(0.206em * (1 - var(--pa)));
+    visibility: hidden;
   }
   .wordmark.ready { visibility: visible; }
 
   .article,
   .noun {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-    font-size: calc(var(--size) * 0.441);
+    font-size: 0.441em;
     font-weight: 400;
     color: var(--muted);
+    white-space: nowrap;
+    /* They give up their width as well as their ink. Fading alone left them holding
+       the row open, so the slab stayed as wide as the whole phrase around a name that
+       no longer needed the room. Faded out by the time they are a third gone, so the
+       narrowing is never seen cutting into a letter. */
+    overflow: hidden;
+    opacity: calc(1 - var(--pa) * 2.8);
   }
+  .article { width: calc(var(--wa, 0px) * (1 - var(--pa))); }
+  .noun    { width: calc(var(--wn, 0px) * (1 - var(--pa))); }
 
   .name {
     font-family: "EB Garamond", Garamond, "Adobe Garamond Pro", "Hoefler Text", "Times New Roman", serif;
-    font-size: var(--size);
+    font-size: 1em;
     font-weight: 400;
-    letter-spacing: 0.044em;     /* 1.5pt at 34pt */
+    letter-spacing: 0.044em;   /* 1.5pt at 34pt */
     color: var(--mark);
+    white-space: nowrap;
 
     /* Squeezed to 80% of its width, as the app sets it. A transform does not change
-       the space an element takes up, so the 10% left standing either side is taken
-       back below — measured rather than estimated, because the width depends on
-       which Garamond the machine actually has. */
+       the space an element takes up, so the 10% left standing at each end is taken
+       back below — measured, because the width depends on which Garamond the
+       visitor's machine actually has. */
     display: inline-block;
     transform: scaleX(0.8);
   }
 </style>
 </head>
 <body>
-  <p class="wordmark">
-    <span class="article">a</span><span class="name">MALIK</span><span class="noun">product</span>
-  </p>
+  <div class="scroller">
+    <div class="stage">
+      <div class="plate">
+        <p class="wordmark">
+          <span class="article">a</span><span class="name">MALIK</span><span class="noun">product</span>
+        </p>
+      </div>
+    </div>
+  </div>
 
 <script>
-  // `offsetWidth` is the layout width, which the transform leaves alone — so this is
-  // the unsqueezed width, and a tenth of it is the blank now standing at each end.
-  function fit() {
-    const wordmark = document.querySelector('.wordmark');
-    const name = document.querySelector('.name');
+  const root = document.documentElement;
+  const stage = document.querySelector('.stage');
+  const plate = document.querySelector('.plate');
+  const wordmark = document.querySelector('.wordmark');
+  const name = document.querySelector('.name');
+  const article = document.querySelector('.article');
+  const noun = document.querySelector('.noun');
+
+  const clamp01 = (n) => Math.min(Math.max(n, 0), 1);
+
+  // `offsetWidth` is the laid-out width, which a transform leaves alone — so these are
+  // the true widths, before the squeeze and before any sliding.
+  function measure() {
     name.style.marginInline = '0';
     name.style.marginInline = `${-name.offsetWidth * 0.1}px`;
+
+    // Their natural widths, so the collapse has somewhere to start from. Cleared
+    // first, or each measurement would return the width the last one set.
+    article.style.width = 'auto';
+    noun.style.width = 'auto';
+    root.style.setProperty('--wa', `${article.offsetWidth}px`);
+    root.style.setProperty('--wn', `${noun.offsetWidth}px`);
+    article.style.width = '';
+    noun.style.width = '';
     wordmark.classList.add('ready');
   }
 
-  // After the font is in hand: measuring against the fallback would set the gaps for
-  // a face that is about to be replaced.
-  if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(fit);
-  } else {
-    window.addEventListener('load', fit);
+  function frame() {
+    const vh = window.innerHeight;
+    // First screen settles the mark; the next carries it to the top.
+    const pa = clamp01(window.scrollY / (vh * 0.6));
+    const pb = clamp01((window.scrollY - vh * 0.6) / (vh * 0.8));
+    root.style.setProperty('--pa', pa.toFixed(4));
+    root.style.setProperty('--pb', pb.toFixed(4));
+
+    // Measured after the new size has been applied, so the slab lands flush with the
+    // top of the window whatever height it has shrunk to.
+    root.style.setProperty('--rise', `${-(stage.offsetHeight - plate.offsetHeight) / 2}px`);
+    root.style.setProperty('--bleed', `${Math.max((window.innerWidth - plate.offsetWidth) / 2, 0) * pb}px`);
   }
-  window.addEventListener('resize', fit);
+
+  let queued = false;
+  function onScroll() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; frame(); });
+  }
+
+  // Measured once the font is in hand: sizing against the fallback would set the
+  // spacing for a face that is about to be replaced.
+  (document.fonts?.ready ?? Promise.resolve()).then(() => { measure(); frame(); });
+
+  addEventListener('scroll', onScroll, { passive: true });
+  addEventListener('resize', () => { measure(); frame(); });
 </script>
 </body>
 </html>
