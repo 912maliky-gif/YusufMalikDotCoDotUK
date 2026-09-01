@@ -79,6 +79,14 @@
   html, body {
     scrollbar-width: none;          /* Firefox, and Safari 18.2 on */
     -ms-overflow-style: none;
+
+    /* A sideways swipe on a page with nowhere to go sideways is handed to the browser,
+       which reads it as "back". Since a sideways swipe here means something, the page
+       keeps it: this refuses the overscroll the gesture is built on, rather than
+       trying to out-guess it after the fact. */
+    overscroll-behavior-x: none;
+    /* The same refusal for touch — the page pans up and down, and nothing else. */
+    touch-action: pan-y;
   }
 
   /* A grey dot instead of the arrow.
@@ -401,14 +409,20 @@
   let wheelHeld = false;
   let wheelIdle;
   addEventListener('wheel', (e) => {
-    // A mostly vertical wheel is someone scrolling the page, not choosing a face.
+    // A mostly vertical wheel is someone scrolling the page, not choosing a face —
+    // and it is left alone entirely, so ordinary scrolling is never intercepted.
     if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 2) return;
+    // Claimed outright. `overscroll-behavior` alone leaves a gap: a trackpad gesture
+    // that begins before the browser has decided whose it is can still be taken as a
+    // page-back, and there is no undoing that once it has happened.
+    if (e.cancelable) e.preventDefault();
     clearTimeout(wheelIdle);
     wheelIdle = setTimeout(() => { wheelHeld = false; }, 220);
     if (wheelHeld) return;
     wheelHeld = true;
     step(e.deltaX > 0 ? 1 : -1);
-  }, { passive: true });
+    // Not passive, because a passive listener is forbidden from refusing the gesture.
+  }, { passive: false });
 
   // Touch: one swipe, one face, by definition of the gesture.
   let touchX = null, touchY = null;
