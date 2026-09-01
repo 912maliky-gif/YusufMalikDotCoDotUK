@@ -17,7 +17,9 @@
     --pb: 0;
 
     --big: clamp(2rem, 7vw, 3.25rem);
-    --bar: 1.35rem;
+
+    /* How far the slab keeps off the top of the window once it has arrived. */
+    --perch: 22px;
 
     /* The mark's own colours, as the app sets them. */
     --mark:  #000000;
@@ -79,23 +81,20 @@
     position: relative;
     pointer-events: auto;
     padding: 0.72em 1.15em;
-    font-size: calc(var(--big) + (var(--bar) - var(--big)) * var(--pb));
-    /* Rises from the middle of the window to the top. The distance depends on how
-       tall the slab currently is, so it is measured rather than assumed. */
+    font-size: var(--big);
+    /* Rises from the middle of the window to rest near the top. It keeps its size and
+       its shape the whole way — the slab is the bar, not something that turns into
+       one. The distance depends on how tall it is, so it is measured, not assumed. */
     transform: translateY(calc(var(--rise, 0px) * var(--pb)));
   }
 
-  /* The slab itself, behind the letters. A pseudo-element so it can fade, grow and
-     spread to the window's edges without dragging the text with it. */
+  /* The slab itself, behind the letters. A pseudo-element so it can fade and grow
+     without dragging the text with it. */
   .plate::before {
     content: '';
     position: absolute;
-    /* Negative side insets are what turn a pill into a full-width bar. */
-    top: 0;
-    bottom: 0;
-    left: calc(-1 * var(--bleed, 0px));
-    right: calc(-1 * var(--bleed, 0px));
-    border-radius: calc(0.62em * (1 - var(--pb)));
+    inset: 0;
+    border-radius: 0.62em;
     background: linear-gradient(145deg, var(--plate-lit), var(--plate));
     box-shadow:
       calc(0.34em * var(--pa)) calc(0.34em * var(--pa)) calc(0.7em * var(--pa)) var(--shadow-dark),
@@ -197,10 +196,10 @@
     root.style.setProperty('--pa', pa.toFixed(4));
     root.style.setProperty('--pb', pb.toFixed(4));
 
-    // Measured after the new size has been applied, so the slab lands flush with the
-    // top of the window whatever height it has shrunk to.
-    root.style.setProperty('--rise', `${-(stage.offsetHeight - plate.offsetHeight) / 2}px`);
-    root.style.setProperty('--bleed', `${Math.max((window.innerWidth - plate.offsetWidth) / 2, 0) * pb}px`);
+    // Half the room above the slab is how far it has to climb to reach the top of the
+    // window; the perch is what stops it landing flush against the edge.
+    const perch = parseFloat(getComputedStyle(root).getPropertyValue('--perch')) || 0;
+    root.style.setProperty('--rise', `${-((stage.offsetHeight - plate.offsetHeight) / 2 - perch)}px`);
   }
 
   let queued = false;
