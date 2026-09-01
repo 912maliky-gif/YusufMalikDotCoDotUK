@@ -7,14 +7,19 @@
 <style>
   /* Registered so they can be used inside calc() and colour mixing, and so they hold
      a sane value before the first scroll event lands. */
-  @property --pa { syntax: '<number>'; inherits: true; initial-value: 0; }
-  @property --pb { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --fade    { syntax: '<number>'; inherits: true; initial-value: 1; }
+  @property --collapse{ syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --raised  { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --lift    { syntax: '<number>'; inherits: true; initial-value: 0; }
 
   :root {
-    /* Two halves of the journey. The first settles the mark; the second carries it up
-       to the top of the window and spreads it into a bar. */
-    --pa: 0;
-    --pb: 0;
+    /* Four readings of one scroll, not four stages of it. Every one of them is moving
+       while the others are: the words go while the slab arrives while the whole thing
+       climbs. They differ only in how quickly each finishes. */
+    --fade: 1;      /* the ink in "a" and "product" */
+    --collapse: 0;  /* the room those two words take up */
+    --raised: 0;    /* how far the slab has come up out of the page */
+    --lift: 0;      /* how far up the window the slab has travelled */
 
     --big: clamp(2rem, 7vw, 3.25rem);
 
@@ -55,7 +60,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background: color-mix(in srgb, var(--ground-soft) calc(var(--pa) * 100%), var(--ground-flat));
+    background: color-mix(in srgb, var(--ground-soft) calc(var(--raised) * 100%), var(--ground-flat));
     color: var(--mark);
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
@@ -63,7 +68,7 @@
 
   /* The room to scroll through. The mark never travels down the page — the stage is
      stuck to the top of the window while this passes behind it. */
-  .scroller { height: 300vh; height: 300svh; }
+  .scroller { height: 220vh; height: 220svh; }
 
   .stage {
     position: sticky;
@@ -85,7 +90,7 @@
     /* Rises from the middle of the window to rest near the top. It keeps its size and
        its shape the whole way — the slab is the bar, not something that turns into
        one. The distance depends on how tall it is, so it is measured, not assumed. */
-    transform: translateY(calc(var(--rise, 0px) * var(--pb)));
+    transform: translateY(calc(var(--rise, 0px) * var(--lift)));
   }
 
   /* The slab itself, behind the letters. A pseudo-element so it can fade and grow
@@ -97,10 +102,10 @@
     border-radius: 0.62em;
     background: linear-gradient(145deg, var(--plate-lit), var(--plate));
     box-shadow:
-      calc(0.34em * var(--pa)) calc(0.34em * var(--pa)) calc(0.7em * var(--pa)) var(--shadow-dark),
-      calc(-0.20em * var(--pa)) calc(-0.20em * var(--pa)) calc(0.5em * var(--pa)) var(--shadow-lit);
-    opacity: var(--pa);
-    transform: scale(calc(0.94 + 0.06 * var(--pa)));
+      calc(0.34em * var(--raised)) calc(0.34em * var(--raised)) calc(0.7em * var(--raised)) var(--shadow-dark),
+      calc(-0.20em * var(--raised)) calc(-0.20em * var(--raised)) calc(0.5em * var(--raised)) var(--shadow-lit);
+    opacity: var(--raised);
+    transform: scale(calc(0.94 + 0.06 * var(--raised)));
   }
 
   .wordmark {
@@ -110,7 +115,7 @@
     align-items: baseline;
     /* Closes along with the words either side, so nothing is left holding the slab
        open once they have gone. */
-    gap: calc(0.206em * (1 - var(--pa)));
+    gap: calc(0.206em * (1 - var(--collapse)));
     visibility: hidden;
   }
   .wordmark.ready { visibility: visible; }
@@ -127,10 +132,10 @@
        no longer needed the room. Faded out by the time they are a third gone, so the
        narrowing is never seen cutting into a letter. */
     overflow: hidden;
-    opacity: calc(1 - var(--pa) * 2.8);
+    opacity: var(--fade);
   }
-  .article { width: calc(var(--wa, 0px) * (1 - var(--pa))); }
-  .noun    { width: calc(var(--wn, 0px) * (1 - var(--pa))); }
+  .article { width: calc(var(--wa, 0px) * (1 - var(--collapse))); }
+  .noun    { width: calc(var(--wn, 0px) * (1 - var(--collapse))); }
 
   .name {
     font-family: "EB Garamond", Garamond, "Adobe Garamond Pro", "Hoefler Text", "Times New Roman", serif;
@@ -190,11 +195,18 @@
 
   function frame() {
     const vh = window.innerHeight;
-    // First screen settles the mark; the next carries it to the top.
-    const pa = clamp01(window.scrollY / (vh * 0.6));
-    const pb = clamp01((window.scrollY - vh * 0.6) / (vh * 0.8));
-    root.style.setProperty('--pa', pa.toFixed(4));
-    root.style.setProperty('--pb', pb.toFixed(4));
+    // One scroll, read four ways. They all start together at the first pixel of it —
+    // the mark begins climbing while the words are still fading, rather than waiting
+    // for them to finish — and only differ in how soon each is done.
+    const p = clamp01(window.scrollY / (vh * 0.9));
+    // The ink goes first and the room it took goes second, because a word that is
+    // still half visible while its box is closing gets sliced down the middle. Both
+    // happen inside the opening fifth of the scroll, well before the climb is over —
+    // nothing here waits for anything else to finish.
+    root.style.setProperty('--fade', clamp01(1 - p / 0.18).toFixed(4));
+    root.style.setProperty('--collapse', clamp01((p - 0.18) / 0.30).toFixed(4));
+    root.style.setProperty('--raised', clamp01(p / 0.45).toFixed(4));
+    root.style.setProperty('--lift', p.toFixed(4));
 
     // Half the room above the slab is how far it has to climb to reach the top of the
     // window; the perch is what stops it landing flush against the edge.
