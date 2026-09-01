@@ -14,6 +14,7 @@
   @property --collapse{ syntax: '<number>'; inherits: true; initial-value: 0; }
   @property --raised  { syntax: '<number>'; inherits: true; initial-value: 0; }
   @property --lift    { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --emerge  { syntax: '<number>'; inherits: true; initial-value: 0; }
 
   :root {
     /* Four readings of one scroll, not four stages of it. Every one of them is moving
@@ -23,6 +24,7 @@
     --collapse: 0;  /* the room those two words take up */
     --raised: 0;    /* how far the slab has come up out of the page */
     --lift: 0;      /* how far up the window the slab has travelled */
+    --emerge: 0;    /* the icon arriving in the space the mark is leaving */
 
     --big: clamp(2rem, 7vw, 3.25rem);
 
@@ -224,6 +226,33 @@
     transform: scaleX(var(--squeeze, 1));
   }
 
+  /* The icon takes the centre of the page, which is the spot the mark has just left
+     — it does not appear somewhere new, it moves into a place the eye is already
+     holding. Absolutely placed rather than laid out beside the slab, because the
+     stage is a single centred row and a second child would sit next to the pill
+     instead of under it.
+
+     `translate` does the centring and `transform` does the arriving, so the two never
+     have to be written into one declaration and kept in step by hand. */
+  .logo {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    /* The icon keeps a sixth of its canvas as clear air for its own shadow, so the
+       size set here is not the size seen: the body of it comes to 83.6% of this.
+       These numbers are the ones that put the mark itself at about 144px across —
+       a little under half the width of the pill above it. */
+    width: clamp(115px, 24vw, 172px);
+    height: auto;
+    transform: translateY(calc(20px * (1 - var(--emerge))))
+               scale(calc(0.96 + 0.04 * var(--emerge)));
+    opacity: var(--emerge);
+    /* The stage refuses the pointer so it cannot swallow scrolling, and the icon is
+       there to be looked at rather than used. */
+    pointer-events: none;
+  }
+
   /* The letters, as distinct from the box holding them: this is what slides aside
      when a face is swapped, leaving the squeeze above it untouched. */
   .ink { display: inline-block; }
@@ -247,6 +276,7 @@
           <span class="article">a</span><span class="name"><span class="ink">MALIK</span></span><span class="noun">product</span>
         </p>
       </div>
+      <img class="logo" src="logo.png" width="256" height="256" alt="" decoding="async">
     </div>
   </div>
 
@@ -305,6 +335,17 @@
     root.style.setProperty('--collapse', clamp01((p - 0.18) / 0.30).toFixed(4));
     root.style.setProperty('--raised', clamp01(p / 0.45).toFixed(4));
     root.style.setProperty('--lift', p.toFixed(4));
+    // A fifth reading, and the last to start: the icon comes up into the middle of the
+    // window over the closing stretch of the climb, and is fully there at the moment
+    // the mark reaches the top.
+    //
+    // Measured against the same p as everything else, rather than against the scroll
+    // left over once the mark has parked. That leftover is a comfortable third of a
+    // window on a desktop and almost nothing on a phone — `svh` is the short viewport
+    // and `innerHeight` is the tall one, so 220svh of page leaves barely 0.08 of a
+    // window to scroll once the mark has taken its 0.9. Tied to that, the icon would
+    // simply never arrive on the device this was built for.
+    root.style.setProperty('--emerge', clamp01((p - 0.82) / 0.18).toFixed(4));
 
     // Swiping is only offered once the mark has arrived; on the way there the pill's
     // height belongs to the closing words, so any height pinned by a face swap is let
