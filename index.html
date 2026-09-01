@@ -306,7 +306,14 @@
       if (plate.style.width) { plate.style.width = ''; plate.style.height = ''; }
     } else if (!wasParked) {
       // The moment it arrives, the size it has arrived at is the size it keeps.
-      boxWidth = boxWidth ?? plate.offsetWidth;
+      if (boxWidth === null) {
+        const cs = getComputedStyle(plate);
+        const pad = parseFloat(cs.paddingLeft) * 2;
+        // widestInk is a multiple of the mark's own size, so it only becomes pixels
+        // once that size is known.
+        const needed = widestInk * parseFloat(cs.fontSize) + pad;
+        boxWidth = Math.max(plate.offsetWidth, Math.round(needed));
+      }
       boxHeight = boxHeight ?? plate.offsetHeight;
       plate.style.width = `${boxWidth}px`;
       plate.style.height = `${boxHeight}px`;
@@ -357,6 +364,10 @@
      Fixed, the faces change inside something that does not move. */
   let boxWidth = null;
   let boxHeight = null;
+  /* How much room the broadest face needs once every face stands at the same height.
+     The box is cut to this rather than to the original mark, so no face has to shrink
+     to fit and the box still never changes. */
+  let widestInk = 0;
 
   function applyFace(i) {
     const f = FACES[i];
@@ -451,27 +462,47 @@
      numbers would otherwise be nine guesses that only hold for the fonts as they are
      today. */
   async function fitFaces() {
-    const probe = document.createElement('span');
-    probe.textContent = 'MALIK';
-    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-size:100px;letter-spacing:0.044em;';
-    document.body.appendChild(probe);
+    /* Measured as ink, not as line boxes.
+    
+       A font's line box is mostly air above and below the letters, and how much air
+       differs wildly between a text face and a brush script — so matching line boxes
+       made the scripts sit tiny inside a box sized for their empty space. Canvas
+       reports where the paint actually starts and stops, which is the only measure
+       that answers the question being asked: does this look the same size as the
+       other one. */
+    const ctx = document.createElement('canvas').getContext('2d');
+    const PROBE = 100;   // the size everything is measured at, before being scaled
 
     const box = [];
     for (const f of FACES) {
-      probe.style.fontFamily = f.family;
-      try { await document.fonts.load(`100px ${f.family.split(',')[0]}`); } catch {}
-      box.push({ w: probe.offsetWidth * (f.squeeze ?? 1), h: probe.offsetHeight });
+      try { await document.fonts.load(`${PROBE}px ${f.family.split(',')[0]}`); } catch {}
+      ctx.font = `${PROBE}px ${f.family}`;
+      try { ctx.letterSpacing = '0.044em'; } catch {}
+      const m = ctx.measureText('MALIK');
+      box.push({
+        w: (m.actualBoundingBoxRight + m.actualBoundingBoxLeft) * (f.squeeze ?? 1),
+        h: m.actualBoundingBoxAscent + m.actualBoundingBoxDescent
+      });
     }
-    probe.remove();
 
-    // The original sets the size the rest are cut to, and each face is held to
-    // whichever of the two measurements is the binding one. Fitting on width alone
-    // let the tall script faces stand half again as high as the plain ones.
+    /* Height alone decides the scale, because height is what the eye compares when it
+       asks whether two words are the same size.
+    
+       Width used to cap it as well, which quietly undid the whole exercise: the box
+       had been cut to fit the original, so a broader face reached the ends of it and
+       was shrunk — Audiowide and Hurricane ended up a fifth shorter than the rest for
+       no reason the eye could see. The answer is to size the box for the broadest
+       face rather than the first one, and let every face stand at full height inside
+       a box that still never moves. */
     const target = box[0];
     FACES.forEach((f, i) => {
-      const fit = Math.min(target.w / (box[i].w || 1), target.h / (box[i].h || 1));
-      f.scale = Math.min(Math.max(fit, 0.5), 1.8);
+      f.scale = Math.min(Math.max(target.h / (box[i].h || 1), 0.4), 2.6);
     });
+
+    // The room the broadest of them needs, once every face stands at the same height.
+    // Held as a fraction of the probe's size rather than as pixels, because the mark
+    // is not drawn at the size it was measured at — the window decides that.
+    widestInk = Math.max(...FACES.map((f, i) => box[i].w * f.scale)) / PROBE * 1.03;
     applyFace(face);
   }
 
