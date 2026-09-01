@@ -64,12 +64,21 @@
     color: var(--mark);
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
-    /* Nothing on the page needs a position indicator, and a bar down the right edge
-       is one more thing sitting beside a mark meant to be alone. Scrolling itself is
-       untouched — only the drawing of it. */
-    scrollbar-width: none;
   }
-  body::-webkit-scrollbar { display: none; }
+
+  /* Nothing on the page needs a position indicator, and a bar down the right edge is
+     one more thing sitting beside a mark meant to be alone. Scrolling itself is
+     untouched — only the drawing of it.
+
+     Declared on the root as well as the body, because the element that actually
+     scrolls a normal page is the root: putting this on `body` alone hides a scrollbar
+     the body does not have and leaves the visible one exactly where it was. */
+  html, body {
+    scrollbar-width: none;          /* Firefox, and Safari 18.2 on */
+    -ms-overflow-style: none;
+  }
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
   /* The room to scroll through. The mark never travels down the page — the stage is
      stuck to the top of the window while this passes behind it. */
