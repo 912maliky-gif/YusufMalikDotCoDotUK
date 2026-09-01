@@ -208,8 +208,15 @@
      when a face is swapped, leaving the squeeze above it untouched. */
   .ink { display: inline-block; }
 
-  /* Whatever face is showing sits in the middle of a box that does not move. */
-  .plate { text-align: center; }
+  /* Whatever face is showing sits in the middle of a box that does not move — across
+     and down. Each face has its own line box: a script face with long ascenders asks
+     for half again the height of a plain one, and left to itself the pill grew and
+     shrank on every swipe. */
+  .plate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 </style>
 </head>
 <body>
@@ -286,13 +293,15 @@
     parked = p > 0.999;
 
     if (!parked) {
-      // On the way up the width belongs to the closing words, so anything pinned by a
+      // On the way up the size belongs to the closing words, so anything pinned by a
       // face swap is let go of again.
-      if (plate.style.width) plate.style.width = '';
+      if (plate.style.width) { plate.style.width = ''; plate.style.height = ''; }
     } else if (!wasParked) {
-      // The moment it arrives, whatever width it has arrived at is the width it keeps.
+      // The moment it arrives, the size it has arrived at is the size it keeps.
       boxWidth = boxWidth ?? plate.offsetWidth;
+      boxHeight = boxHeight ?? plate.offsetHeight;
       plate.style.width = `${boxWidth}px`;
+      plate.style.height = `${boxHeight}px`;
     }
 
     // Half the room above the slab is how far it has to climb to reach the top of the
@@ -339,6 +348,7 @@
      breathes a few pixels each time you swipe reads as the box being unsure of itself.
      Fixed, the faces change inside something that does not move. */
   let boxWidth = null;
+  let boxHeight = null;
 
   function applyFace(i) {
     const f = FACES[i];
@@ -350,8 +360,9 @@
     // Only ever pinned once the mark is parked, and never before: pinning it at load
     // would record the width of the whole phrase, and a jump straight to the top
     // rather than a scroll never passes through the state that would let it go again.
-    if (!parked) { plate.style.width = ''; return; }
+    if (!parked) { plate.style.width = ''; plate.style.height = ''; return; }
     plate.style.width = `${boxWidth}px`;
+    plate.style.height = `${boxHeight}px`;
   }
 
   /* One swipe moves one face, however hard it was thrown. A trackpad flick sends a
@@ -431,25 +442,29 @@
     probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-size:100px;letter-spacing:0.044em;';
     document.body.appendChild(probe);
 
-    const widths = [];
+    const box = [];
     for (const f of FACES) {
       probe.style.fontFamily = f.family;
       try { await document.fonts.load(`100px ${f.family.split(',')[0]}`); } catch {}
-      widths.push(probe.offsetWidth * (f.squeeze ?? 1));
+      box.push({ w: probe.offsetWidth * (f.squeeze ?? 1), h: probe.offsetHeight });
     }
     probe.remove();
 
-    const target = widths[0];               // the original sets the size to match
+    // The original sets the size the rest are cut to, and each face is held to
+    // whichever of the two measurements is the binding one. Fitting on width alone
+    // let the tall script faces stand half again as high as the plain ones.
+    const target = box[0];
     FACES.forEach((f, i) => {
-      f.scale = widths[i] ? Math.min(Math.max(target / widths[i], 0.7), 1.7) : 1;
+      const fit = Math.min(target.w / (box[i].w || 1), target.h / (box[i].h || 1));
+      f.scale = Math.min(Math.max(fit, 0.5), 1.8);
     });
     applyFace(face);
   }
 
   addEventListener('scroll', onScroll, { passive: true });
   addEventListener('resize', () => {
-    boxWidth = null;
-    plate.style.width = '';
+    boxWidth = boxHeight = null;
+    plate.style.width = plate.style.height = '';
     parked = false;
     measure();
     frame();
