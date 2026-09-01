@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>a MALIK product</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barrio&family=Birthstone&family=Explora&family=Hurricane&family=Nanum+Gothic&family=Qahiri&family=Rock+Salt&display=swap">
 <style>
   /* Registered so they can be used inside calc() and colour mixing, and so they hold
      a sane value before the first scroll event lands. */
@@ -180,8 +183,11 @@
   .noun    { width: calc(var(--wn, 0px) * (1 - var(--collapse))); }
 
   .name {
-    font-family: "EB Garamond", Garamond, "Adobe Garamond Pro", "Hoefler Text", "Times New Roman", serif;
-    font-size: 1em;
+    font-family: var(--face);
+    /* Each face is scaled to sit at about the same width as the others, so the pill
+       does not lurch between a wide one and a narrow one. The number is measured from
+       the face itself once it has loaded, not guessed per font. */
+    font-size: calc(1em * var(--face-scale, 1));
     font-weight: 400;
     letter-spacing: 0.044em;   /* 1.5pt at 34pt */
     color: var(--mark);
@@ -192,8 +198,18 @@
        back below — measured, because the width depends on which Garamond the
        visitor's machine actually has. */
     display: inline-block;
-    transform: scaleX(0.8);
+    /* Only the Garamond original is squeezed: that narrowing is part of the mark, and
+       applied to a display face drawn at its own proportions it would just look like
+       a mistake. */
+    transform: scaleX(var(--squeeze, 1));
   }
+
+  /* The letters, as distinct from the box holding them: this is what slides aside
+     when a face is swapped, leaving the squeeze above it untouched. */
+  .ink { display: inline-block; }
+
+  /* Whatever face is showing sits in the middle of a box that does not move. */
+  .plate { text-align: center; }
 </style>
 </head>
 <body>
@@ -201,7 +217,7 @@
     <div class="stage">
       <div class="plate">
         <p class="wordmark">
-          <span class="article">a</span><span class="name">MALIK</span><span class="noun">product</span>
+          <span class="article">a</span><span class="name"><span class="ink">MALIK</span></span><span class="noun">product</span>
         </p>
       </div>
     </div>
@@ -209,6 +225,7 @@
 
 <script>
   const root = document.documentElement;
+  const ink = document.querySelector('.ink');
   const stage = document.querySelector('.stage');
   const plate = document.querySelector('.plate');
   const wordmark = document.querySelector('.wordmark');
@@ -222,14 +239,17 @@
   // the true widths, before the squeeze and before any sliding.
   function measure() {
     name.style.marginInline = '0';
+    // The squeeze belongs to the Garamond original alone; the rest are drawn at their
+    // own proportions and only the room it leaves standing has to be taken back.
+    const squeeze = parseFloat(getComputedStyle(name).transform.split('(')[1]) || 1;
 
     // Letter spacing is added after the last letter as well as between them, so the
     // painted word sits half a space left of the box that holds it. Splitting that
     // difference between the two margins puts the letters themselves on the centre
     // line rather than their box.
     const tracking = parseFloat(getComputedStyle(name).letterSpacing) || 0;
-    const bias = tracking * 0.8 / 2;          // 0.8 because the name is squeezed
-    const pull = -name.offsetWidth * 0.1;     // the room the squeeze leaves standing
+    const bias = tracking * squeeze / 2;
+    const pull = -name.offsetWidth * (1 - squeeze) / 2;
     name.style.marginLeft = `${pull + bias}px`;
     name.style.marginRight = `${pull - bias}px`;
 
@@ -259,6 +279,22 @@
     root.style.setProperty('--raised', clamp01(p / 0.45).toFixed(4));
     root.style.setProperty('--lift', p.toFixed(4));
 
+    // Swiping is only offered once the mark has arrived; on the way there the pill's
+    // width belongs to the closing words, so any width pinned by a face swap is let
+    // go of again.
+    const wasParked = parked;
+    parked = p > 0.999;
+
+    if (!parked) {
+      // On the way up the width belongs to the closing words, so anything pinned by a
+      // face swap is let go of again.
+      if (plate.style.width) plate.style.width = '';
+    } else if (!wasParked) {
+      // The moment it arrives, whatever width it has arrived at is the width it keeps.
+      boxWidth = boxWidth ?? plate.offsetWidth;
+      plate.style.width = `${boxWidth}px`;
+    }
+
     // Half the room above the slab is how far it has to climb to reach the top of the
     // window; the perch is what stops it landing flush against the edge.
     const perch = parseFloat(getComputedStyle(root).getPropertyValue('--perch')) || 0;
@@ -274,10 +310,150 @@
 
   // Measured once the font is in hand: sizing against the fallback would set the
   // spacing for a face that is about to be replaced.
-  (document.fonts?.ready ?? Promise.resolve()).then(() => { measure(); frame(); });
+  (document.fonts?.ready ?? Promise.resolve()).then(() => {
+    measure();
+    frame();
+    fitFaces();
+  });
+
+  /* ---- The faces, and swiping between them ------------------------------------ */
+
+  // The original leads, so a swipe can always bring the mark itself back.
+  const FACES = [
+    { family: '"EB Garamond", Garamond, "Adobe Garamond Pro", "Hoefler Text", serif', squeeze: 0.8 },
+    { family: '"Birthstone", cursive' },
+    { family: '"Nanum Gothic", sans-serif' },
+    { family: '"Audiowide", sans-serif' },
+    { family: '"Hurricane", cursive' },
+    { family: '"Explora", cursive' },
+    { family: '"Qahiri", sans-serif' },
+    { family: '"Barrio", cursive' },
+    { family: '"Rock Salt", cursive' }
+  ];
+
+  let face = 0;
+  let swapping = false;
+  let parked = false;      // true once the mark has finished its climb
+  /* The pill's width, taken once when the mark first arrives and then held. Every face
+     is scaled towards the same width, but "towards" is not "exactly" — and a box that
+     breathes a few pixels each time you swipe reads as the box being unsure of itself.
+     Fixed, the faces change inside something that does not move. */
+  let boxWidth = null;
+
+  function applyFace(i) {
+    const f = FACES[i];
+    root.style.setProperty('--face', f.family);
+    root.style.setProperty('--squeeze', f.squeeze ?? 1);
+    root.style.setProperty('--face-scale', f.scale ?? 1);
+    measure();
+
+    // Only ever pinned once the mark is parked, and never before: pinning it at load
+    // would record the width of the whole phrase, and a jump straight to the top
+    // rather than a scroll never passes through the state that would let it go again.
+    if (!parked) { plate.style.width = ''; return; }
+    plate.style.width = `${boxWidth}px`;
+  }
+
+  /* One swipe moves one face, however hard it was thrown. A trackpad flick sends a
+     long tail of events and a phone fling sends one; both have to count once. The
+     lock is taken on the first event of a gesture and only released once the gesture
+     has been quiet for a moment, so the tail is spent against a closed door. */
+  function step(direction) {
+    if (swapping || !parked) return;
+    swapping = true;
+
+    const away = `translateX(${-direction * 0.4}em)`;
+    const from = `translateX(${direction * 0.4}em)`;
+
+    ink.style.transition = 'transform 0.16s ease-in, opacity 0.16s ease-in';
+    ink.style.transform = away;
+    ink.style.opacity = '0';
+
+    setTimeout(() => {
+      face = (face + direction + FACES.length) % FACES.length;
+      // Swapped while it cannot be seen, so the change of face is never caught in the
+      // act — only its arrival is.
+      applyFace(face);
+
+      ink.style.transition = 'none';
+      ink.style.transform = from;
+      void ink.offsetWidth;                 // makes the jump take effect before the ride back
+      ink.style.transition = 'transform 0.28s cubic-bezier(0.2, 0.7, 0.3, 1), opacity 0.28s ease-out';
+      ink.style.transform = 'translateX(0)';
+      ink.style.opacity = '1';
+
+      setTimeout(() => { swapping = false; }, 290);
+    }, 170);
+  }
+
+  // Trackpad and mouse wheel.
+  let wheelHeld = false;
+  let wheelIdle;
+  addEventListener('wheel', (e) => {
+    // A mostly vertical wheel is someone scrolling the page, not choosing a face.
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 2) return;
+    clearTimeout(wheelIdle);
+    wheelIdle = setTimeout(() => { wheelHeld = false; }, 220);
+    if (wheelHeld) return;
+    wheelHeld = true;
+    step(e.deltaX > 0 ? 1 : -1);
+  }, { passive: true });
+
+  // Touch: one swipe, one face, by definition of the gesture.
+  let touchX = null, touchY = null;
+  addEventListener('touchstart', (e) => {
+    touchX = e.touches[0].clientX;
+    touchY = e.touches[0].clientY;
+  }, { passive: true });
+  addEventListener('touchend', (e) => {
+    if (touchX === null) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    const dy = e.changedTouches[0].clientY - touchY;
+    touchX = touchY = null;
+    if (Math.abs(dx) < 40 || Math.abs(dx) <= Math.abs(dy)) return;
+    step(dx < 0 ? 1 : -1);
+  }, { passive: true });
+
+  // Arrow keys, so this is reachable without a trackpad.
+  addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') step(1);
+    else if (e.key === 'ArrowLeft') step(-1);
+  });
+
+  /* Each face is measured once it has actually loaded and scaled towards the width of
+     the original, so the pill stays about one size instead of stretching for the wide
+     faces and shrinking for the narrow ones. Measured rather than tabulated: the
+     numbers would otherwise be nine guesses that only hold for the fonts as they are
+     today. */
+  async function fitFaces() {
+    const probe = document.createElement('span');
+    probe.textContent = 'MALIK';
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-size:100px;letter-spacing:0.044em;';
+    document.body.appendChild(probe);
+
+    const widths = [];
+    for (const f of FACES) {
+      probe.style.fontFamily = f.family;
+      try { await document.fonts.load(`100px ${f.family.split(',')[0]}`); } catch {}
+      widths.push(probe.offsetWidth * (f.squeeze ?? 1));
+    }
+    probe.remove();
+
+    const target = widths[0];               // the original sets the size to match
+    FACES.forEach((f, i) => {
+      f.scale = widths[i] ? Math.min(Math.max(target / widths[i], 0.7), 1.7) : 1;
+    });
+    applyFace(face);
+  }
 
   addEventListener('scroll', onScroll, { passive: true });
-  addEventListener('resize', () => { measure(); frame(); });
+  addEventListener('resize', () => {
+    boxWidth = null;
+    plate.style.width = '';
+    parked = false;
+    measure();
+    frame();
+  });
 </script>
 </body>
 </html>
