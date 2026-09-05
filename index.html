@@ -14,7 +14,14 @@
   @property --collapse{ syntax: '<number>'; inherits: true; initial-value: 0; }
   @property --raised  { syntax: '<number>'; inherits: true; initial-value: 0; }
   @property --lift    { syntax: '<number>'; inherits: true; initial-value: 0; }
-  @property --emerge  { syntax: '<number>'; inherits: true; initial-value: 0; }
+  /* The reveal's own readings. --arrive and --overshoot are two easings of the one
+     arrival: everything lands on the first, and only the sideways travel rides the
+     second, which carries the pane a hair past its mark and lets it settle back. */
+  @property --arrive    { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --overshoot { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --arrive-o  { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --body      { syntax: '<number>'; inherits: true; initial-value: 0; }
+  @property --bloom     { syntax: '<number>'; inherits: true; initial-value: 0; }
 
   :root {
     /* Four readings of one scroll, not four stages of it. Every one of them is moving
@@ -24,7 +31,15 @@
     --collapse: 0;  /* the room those two words take up */
     --raised: 0;    /* how far the slab has come up out of the page */
     --lift: 0;      /* how far up the window the slab has travelled */
-    --emerge: 0;    /* the icon arriving in the space the mark is leaving */
+    --arrive: 0;    /* the pane coming across */
+    --overshoot: 0; /* the same arrival, allowed past its mark */
+    --arrive-o: 0;  /* the pane's ink, in before its travel is */
+    --body: 0;      /* the icon's shape settling in behind it */
+    --bloom: 0;     /* the painted ground coming up through the glass */
+
+    /* Big enough to be the second act rather than a footnote to the first, and
+       still narrower than the pill it arrives beneath. */
+    --icon: min(48vmin, 300px);
 
     --big: clamp(2rem, 7vw, 3.25rem);
 
@@ -115,8 +130,12 @@
   body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
   /* The room to scroll through. The mark never travels down the page — the stage is
-     stuck to the top of the window while this passes behind it. */
-  .scroller { height: 220vh; height: 220svh; }
+     stuck to the top of the window while this passes behind it.
+
+     Most of this is the icon's. The mark is done climbing inside the first window's
+     worth; the rest is the reveal, which needs the room to be a reveal rather than a
+     flicker. */
+  .scroller { height: 460vh; height: 460svh; }
 
   .stage {
     position: sticky;
@@ -128,6 +147,14 @@
     justify-content: center;
     /* A full-height layer over the page: it must not swallow scrolling. */
     pointer-events: none;
+
+    /* The pane comes in on a diagonal from off to the right, and both of these are
+       about that approach: the perspective is what makes the turn read as depth, and
+       the clip is what keeps the last of the travel from reaching over the edge of
+       the window. */
+    perspective: 1500px;
+    perspective-origin: 50% 48%;
+    overflow: hidden;
   }
 
   .plate {
@@ -226,31 +253,88 @@
     transform: scaleX(var(--squeeze, 1));
   }
 
-  /* The icon takes the centre of the page, which is the spot the mark has just left
-     — it does not appear somewhere new, it moves into a place the eye is already
-     holding. Absolutely placed rather than laid out beside the slab, because the
-     stage is a single centred row and a second child would sit next to the pill
-     instead of under it.
+  /* ---- The icon, and the reveal that carries it in --------------------------- */
 
-     `translate` does the centring and `transform` does the arriving, so the two never
-     have to be written into one declaration and kept in step by hand. */
+  /* It is not a picture of itself here. The file is a painted ground with one pane
+     of glass over it, and the reveal has to take those two apart — so they are two
+     elements, built the way Logo V4.icon builds them rather than flattened into a
+     PNG. The pane is the ground's sibling and not its child: it arrives from well
+     outside the icon's edges, and a child would be cut off at them.
+
+     The numbers are measured out of the file. The pane artwork's ink is 488 x 892
+     inside a 1024 canvas, placed at 0.7 — so 341.6 x 624.4pt, which is 0.3336 and
+     0.6098 of the icon, dead centre in both directions. */
   .logo {
     position: absolute;
     left: 50%;
     top: 50%;
     translate: -50% -50%;
-    /* The icon keeps a sixth of its canvas as clear air for its own shadow, so the
-       size set here is not the size seen: the body of it comes to 83.6% of this.
-       These numbers are the ones that put the mark itself at about 144px across —
-       a little under half the width of the pill above it. */
-    width: clamp(115px, 24vw, 172px);
-    height: auto;
-    transform: translateY(calc(20px * (1 - var(--emerge))))
-               scale(calc(0.96 + 0.04 * var(--emerge)));
-    opacity: var(--emerge);
+    width: var(--icon);
+    height: var(--icon);
+    /* So the pane's rotation is read as depth rather than as a squash: the stage
+       holds the perspective, and this passes it down to the pane. */
+    transform-style: preserve-3d;
     /* The stage refuses the pointer so it cannot swallow scrolling, and the icon is
        there to be looked at rather than used. */
     pointer-events: none;
+  }
+
+  .icon {
+    position: absolute;
+    inset: 0;
+    border-radius: calc(var(--icon) * 0.2237);
+    overflow: hidden;
+    /* The file's own base fill, which is what shows in the moment between the shape
+       arriving and the painting coming up through it. */
+    background: #eaf3ec;
+    background: color(display-p3 0.92507 0.95 0.92843);
+    opacity: var(--body);
+    transform: scale(calc(0.94 + 0.06 * var(--body)));
+    box-shadow:
+      0 40px 80px -34px rgba(23, 28, 24, 0.38),
+      0 2px 5px rgba(23, 28, 24, 0.07);
+  }
+
+  .ground {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: var(--bloom);
+    /* Comes to rest rather than arriving at rest: a little over size, settling to
+       its own. */
+    transform: scale(calc(1.08 - 0.08 * var(--bloom)));
+  }
+
+  .pane {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 2;                 /* glass in front of the painting, never behind it */
+    width: calc(var(--icon) * 0.3336);
+    height: calc(var(--icon) * 0.6098);
+    border-radius: calc(var(--icon) * 0.1);
+    /* Opaque white while it is travelling, frosting back as the ground blooms so the
+       colour ends up reading through it. */
+    background: rgba(255, 255, 255, calc(1 - 0.66 * var(--bloom)));
+    backdrop-filter: blur(18px) saturate(0.72) brightness(1.04);
+    -webkit-backdrop-filter: blur(18px) saturate(0.72) brightness(1.04);
+    box-shadow:
+      0 26px 60px -28px rgba(23, 28, 24, 0.40),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+    opacity: var(--arrive-o);
+    transform:
+      translate(-50%, -50%)
+      translate3d(calc(72vw * (1 - var(--overshoot))),
+                  calc(26px * (1 - var(--arrive))),
+                  calc(-380px * (1 - var(--arrive))))
+      rotateY(calc(-22deg * (1 - var(--arrive))))
+      rotateZ(calc(4deg * (1 - var(--arrive))))
+      scale(calc(0.88 + 0.12 * var(--arrive)));
+    /* Out of focus while it is still a long way off. */
+    filter: blur(calc(9px * (1 - var(--arrive))));
+    will-change: transform, filter;
   }
 
   /* The letters, as distinct from the box holding them: this is what slides aside
@@ -276,7 +360,10 @@
           <span class="article">a</span><span class="name"><span class="ink">MALIK</span></span><span class="noun">product</span>
         </p>
       </div>
-      <img class="logo" src="logo.png" width="256" height="256" alt="" decoding="async">
+      <div class="logo">
+        <div class="icon"><img class="ground" src="logo-ground.jpg" alt="" decoding="async"></div>
+        <div class="pane"></div>
+      </div>
     </div>
   </div>
 
@@ -291,6 +378,10 @@
   const noun = document.querySelector('.noun');
 
   const clamp01 = (n) => Math.min(Math.max(n, 0), 1);
+  const outCubic = (t) => 1 - Math.pow(1 - t, 3);
+  /* Past the mark and back. The only thing on the page that overshoots, and only the
+     pane's sideways travel rides it — everything else lands straight. */
+  const outBack = (t) => { const c = 1.3; return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2; };
 
   // `offsetWidth` is the laid-out width, which a transform leaves alone — so these are
   // the true widths, before the squeeze and before any sliding.
@@ -335,17 +426,34 @@
     root.style.setProperty('--collapse', clamp01((p - 0.18) / 0.30).toFixed(4));
     root.style.setProperty('--raised', clamp01(p / 0.45).toFixed(4));
     root.style.setProperty('--lift', p.toFixed(4));
-    // A fifth reading, and the last to start: the icon comes up into the middle of the
-    // window over the closing stretch of the climb, and is fully there at the moment
-    // the mark reaches the top.
+    /* ---- The reveal ---------------------------------------------------------- */
+
+    // The room the reveal is read across is measured, not assumed: what is actually
+    // left to scroll once the mark has taken its 0.9 of a window to climb. `svh` is
+    // the short viewport and `innerHeight` is the tall one, so a page written in one
+    // and a climb written in the other do not divide into each other the same way on
+    // a phone as on a desktop. Measuring the leftover means the reveal fills whatever
+    // room there turns out to be, and ends where the page does either way.
     //
-    // Measured against the same p as everything else, rather than against the scroll
-    // left over once the mark has parked. That leftover is a comfortable third of a
-    // window on a desktop and almost nothing on a phone — `svh` is the short viewport
-    // and `innerHeight` is the tall one, so 220svh of page leaves barely 0.08 of a
-    // window to scroll once the mark has taken its 0.9. Tied to that, the icon would
-    // simply never arrive on the device this was built for.
-    root.style.setProperty('--emerge', clamp01((p - 0.82) / 0.18).toFixed(4));
+    // The last 15% is left alone, so the icon is finished a little before the floor
+    // rather than exactly on it.
+    const room = Math.max((document.documentElement.scrollHeight - vh) - vh * 0.9, 1);
+    const q = clamp01((window.scrollY - vh * 0.9) / (room * 0.85));
+
+    // Four beats, in the proportions the preview build set: the pane comes across,
+    // the icon's shape arrives behind it, the painting blooms up through the glass,
+    // and the white frosts back to let the colour read. Each one begins while the one
+    // before it is still going. The numbers are the preview's own, divided through by
+    // the 0.86 it spent before its caption — the caption is not wanted here, and the
+    // rest opens up to fill the room it was using.
+    const t = clamp01(q / 0.605);
+    root.style.setProperty('--arrive', outCubic(t).toFixed(4));
+    root.style.setProperty('--overshoot', outBack(t).toFixed(4));
+    // Its ink is in long before its travel is, or it would be seen arriving from off
+    // the edge of the window rather than simply being there, coming.
+    root.style.setProperty('--arrive-o', clamp01(q / 0.058).toFixed(4));
+    root.style.setProperty('--body', outCubic(clamp01((q - 0.558) / 0.233)).toFixed(4));
+    root.style.setProperty('--bloom', outCubic(clamp01((q - 0.698) / 0.302)).toFixed(4));
 
     // Swiping is only offered once the mark has arrived; on the way there the pill's
     // height belongs to the closing words, so any height pinned by a face swap is let
