@@ -41,6 +41,12 @@
        still narrower than the pill it arrives beneath. */
     --icon: min(48vmin, 300px);
 
+    /* What the icon makes room for when it is opened. The width is a ceiling, not a
+       size: the sheet is only as wide as its own words, and the pair is centred on
+       what it actually measures rather than on the box it was allowed. */
+    --sheet-max: min(300px, 34vw);
+    --gap: clamp(28px, 5vw, 56px);
+
     --big: clamp(2rem, 7vw, 3.25rem);
 
     /* How far the slab keeps off the top of the window once it has arrived. */
@@ -264,6 +270,13 @@
      The numbers are measured out of the file. The pane artwork's ink is 488 x 892
      inside a 1024 canvas, placed at 0.7 — so 341.6 x 624.4pt, which is 0.3336 and
      0.6098 of the icon, dead centre in both directions. */
+  /* A button, because it is one: pressing it opens the sheet beside it, and a button
+     is the only version of that a keyboard can reach. Everything a button brings with
+     it by default is given back — border, padding, its own font and ground — leaving
+     just the behaviour.
+
+     It is `disabled` until the reveal has finished, so the middle of the page is not
+     quietly clickable while there is still nothing there to click. */
   .logo {
     position: absolute;
     left: 50%;
@@ -271,13 +284,28 @@
     translate: -50% -50%;
     width: var(--icon);
     height: var(--icon);
+    appearance: none;
+    border: 0;
+    padding: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    cursor: inherit;
+    /* The stage refuses the pointer outright so it can never swallow a scroll, and
+       that refusal is inherited — so the one thing on it meant to be pressed has to
+       ask for the pointer back. */
+    pointer-events: auto;
     /* So the pane's rotation is read as depth rather than as a squash: the stage
        holds the perspective, and this passes it down to the pane. */
     transform-style: preserve-3d;
-    /* The stage refuses the pointer so it cannot swallow scrolling, and the icon is
-       there to be looked at rather than used. */
-    pointer-events: none;
+    /* Steps aside to make room for the sheet, and comes back when it closes. */
+    transform: translateX(0);
+    transition: transform 0.52s cubic-bezier(0.2, 0.7, 0.3, 1);
   }
+  .logo[disabled] { pointer-events: none; }
+  /* --sheet-real is what the sheet came out as, written back by measure(). The
+     fallback is only for the first paint, before anything has been measured. */
+  .stage.open .logo { transform: translateX(calc((var(--gap) + var(--sheet-real, 200px)) / -2)); }
 
   .icon {
     position: absolute;
@@ -337,9 +365,80 @@
     will-change: transform, filter;
   }
 
+  /* What the icon opens onto. It arrives from just behind the icon rather than from
+     nowhere — twenty pixels of travel is enough to read as coming out from under it,
+     and more would turn a disclosure into a journey. */
+  .sheet {
+    --sheet-x: calc((var(--icon) + var(--gap)) / 2);
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    width: max-content;
+    max-width: var(--sheet-max);
+    transform: translateX(calc(var(--sheet-x) - 20px));
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.52s cubic-bezier(0.2, 0.7, 0.3, 1), opacity 0.34s ease-out;
+  }
+  .stage.open .sheet {
+    transform: translateX(var(--sheet-x));
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .sheet-name,
+  .sheet-store,
+  .sheet-note {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  }
+  .sheet-name {
+    font-size: clamp(19px, 2.3vw, 25px);
+    font-weight: 500;
+    letter-spacing: -0.012em;
+    color: var(--mark);
+  }
+  /* The shape of the App Store's button, and deliberately not the thing itself: no
+     href, no press, and not a control of any kind — there is nowhere for it to go
+     yet. Saying so underneath is better than a button that looks live and does
+     nothing when you press it. */
+  .sheet-store {
+    display: inline-block;
+    margin-top: 18px;
+    padding: 7px 22px;
+    border-radius: 999px;
+    background: #0071e3;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .sheet-note {
+    margin-top: 11px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* Side by side needs somewhere to put them. Under about 700px there isn't, so the
+     icon steps up instead of aside and the sheet comes out beneath it. */
+  @media (max-width: 700px) {
+    .sheet {
+      --sheet-x: 0px;
+      max-width: min(320px, 78vw);
+      text-align: center;
+      transform: translateY(calc(var(--icon) * 0.46 + 26px));
+    }
+    .stage.open .sheet { transform: translateY(calc(var(--icon) * 0.46 + 46px)); }
+    .stage.open .logo { transform: translateY(calc(var(--icon) * -0.42)); }
+  }
+
   /* The letters, as distinct from the box holding them: this is what slides aside
      when a face is swapped, leaving the squeeze above it untouched. */
   .ink { display: inline-block; }
+
+  /* Nothing to look at — somewhere to measure from. An empty inline-block of no size
+     sits with its top edge exactly on the baseline, which is the one line in the box
+     the DOM will not otherwise tell you the position of. */
+  .baseline { display: inline-block; width: 0; height: 0; }
 
   /* Whatever face is showing sits in the middle of a box that does not move — across
      and down. Each face has its own line box: a script face with long ascenders asks
@@ -357,12 +456,17 @@
     <div class="stage">
       <div class="plate">
         <p class="wordmark">
-          <span class="article">a</span><span class="name"><span class="ink">MALIK</span></span><span class="noun">product</span>
+          <span class="article">a</span><span class="name"><span class="ink">MALIK</span><span class="baseline"></span></span><span class="noun">product</span>
         </p>
       </div>
-      <div class="logo">
-        <div class="icon"><img class="ground" src="logo-ground.jpg" alt="" decoding="async"></div>
-        <div class="pane"></div>
+      <button class="logo" type="button" aria-expanded="false" aria-controls="sheet" disabled>
+        <span class="icon"><img class="ground" src="logo-ground.jpg" alt="" decoding="async"></span>
+        <span class="pane"></span>
+      </button>
+      <div class="sheet" id="sheet" aria-hidden="true">
+        <p class="sheet-name">Yusuf&rsquo;s Preview</p>
+        <p class="sheet-store">View in App Store</p>
+        <p class="sheet-note">Not on the App Store yet.</p>
       </div>
     </div>
   </div>
@@ -376,6 +480,19 @@
   const name = document.querySelector('.name');
   const article = document.querySelector('.article');
   const noun = document.querySelector('.noun');
+  const baseline = document.querySelector('.baseline');
+  const logo = document.querySelector('.logo');
+  const sheet = document.querySelector('.sheet');
+
+  /* One canvas, used wherever the question is where the paint actually falls rather
+     than where the box around it does. */
+  const gauge = document.createElement('canvas').getContext('2d');
+  function inkOf(text) {
+    const cs = getComputedStyle(name);
+    gauge.font = `${parseFloat(cs.fontSize)}px ${cs.fontFamily}`;
+    try { gauge.letterSpacing = cs.letterSpacing; } catch {}
+    return gauge.measureText(text);
+  }
 
   const clamp01 = (n) => Math.min(Math.max(n, 0), 1);
   const outCubic = (t) => 1 - Math.pow(1 - t, 3);
@@ -391,13 +508,22 @@
     // own proportions and only the room it leaves standing has to be taken back.
     const squeeze = parseFloat(getComputedStyle(name).transform.split('(')[1]) || 1;
 
-    // Letter spacing is added after the last letter as well as between them, so the
-    // painted word sits half a space left of the box that holds it. Splitting that
-    // difference between the two margins puts the letters themselves on the centre
-    // line rather than their box.
-    const tracking = parseFloat(getComputedStyle(name).letterSpacing) || 0;
-    const bias = tracking * squeeze / 2;
-    const pull = -name.offsetWidth * (1 - squeeze) / 2;
+    // Across, the box the browser lays out is not the shape that gets painted inside
+    // it. Letter spacing is added after the last letter as well as between them, and
+    // every face carries its own side bearings on top of that — a brush script with a
+    // flourish coming off the K reaches a long way past where its box stops. Centring
+    // the box therefore does not centre the word: Rock Salt came out eight pixels
+    // right of the middle of a pill measured to the pixel.
+    //
+    // So the box is placed by where the paint falls rather than by where the box
+    // ends. Whatever room is left over goes half to each margin, and the squeeze is
+    // in there because the margins move the box in layout space while the eye is
+    // judging the scaled result.
+    const w = name.offsetWidth;
+    const across = inkOf('MALIK');
+    const middleOfInk = (across.actualBoundingBoxRight - across.actualBoundingBoxLeft) / 2;
+    const bias = squeeze * (w / 2 - middleOfInk);
+    const pull = -w * (1 - squeeze) / 2;
     name.style.marginLeft = `${pull + bias}px`;
     name.style.marginRight = `${pull - bias}px`;
 
@@ -409,6 +535,29 @@
     root.style.setProperty('--wn', `${noun.offsetWidth}px`);
     article.style.width = '';
     noun.style.width = '';
+
+    /* Down the page, the same problem as across it: the box is centred, the ink in it
+       is not. A line box is mostly air — ascender room above, descender room below —
+       and MALIK is capitals with nothing under the baseline at all, so the letters
+       ride high inside a box sitting dead centre. Left alone it reads as a name that
+       has drifted up in its pill, which is exactly what it is.
+
+       Measured, not reasoned about: the marker gives the baseline, the canvas gives
+       how far the paint reaches either side of it, and the difference between where
+       that puts the middle of the ink and where the middle of the pill is, is the
+       nudge. The whole wordmark takes it rather than the name alone — "a" and
+       "product" sit on that same baseline, and moving one of the three would break
+       the line they share. */
+    wordmark.style.translate = '0px';
+    const down = inkOf('MALIK');
+    const middleOfLetters = baseline.getBoundingClientRect().top
+                          - (down.actualBoundingBoxAscent - down.actualBoundingBoxDescent) / 2;
+    const box = plate.getBoundingClientRect();
+    wordmark.style.translate = `0 ${(box.top + box.height / 2 - middleOfLetters).toFixed(2)}px`;
+
+    // How wide the sheet turned out, so the icon knows how far to step aside for it.
+    root.style.setProperty('--sheet-real', `${sheet.offsetWidth}px`);
+
     wordmark.classList.add('ready');
   }
 
@@ -453,7 +602,18 @@
     // the edge of the window rather than simply being there, coming.
     root.style.setProperty('--arrive-o', clamp01(q / 0.058).toFixed(4));
     root.style.setProperty('--body', outCubic(clamp01((q - 0.558) / 0.233)).toFixed(4));
-    root.style.setProperty('--bloom', outCubic(clamp01((q - 0.698) / 0.302)).toFixed(4));
+    const bloom = outCubic(clamp01((q - 0.698) / 0.302));
+    root.style.setProperty('--bloom', bloom.toFixed(4));
+
+    // Only offered once the icon is actually there to press. And if the reveal is
+    // scrolled back up the way it came, anything it opened closes behind it rather
+    // than being left hanging in the middle of a page it no longer belongs to.
+    const nowReady = bloom > 0.995;
+    if (nowReady !== ready) {
+      ready = nowReady;
+      logo.disabled = !ready;
+      if (!ready) setOpen(false);
+    }
 
     // Swiping is only offered once the mark has arrived; on the way there the pill's
     // height belongs to the closing words, so any height pinned by a face swap is let
@@ -623,7 +783,7 @@
        reports where the paint actually starts and stops, which is the only measure
        that answers the question being asked: does this look the same size as the
        other one. */
-    const ctx = document.createElement('canvas').getContext('2d');
+    const ctx = gauge;
     const PROBE = 100;   // the size everything is measured at, before being scaled
 
     const box = [];
@@ -663,6 +823,23 @@
     // the next scroll event, which on a page opened part way down may never come.
     frame();
   }
+
+  /* ---- Opening the icon -------------------------------------------------------- */
+
+  let ready = false;
+  let opened = false;
+
+  function setOpen(next) {
+    if (next === opened) return;
+    opened = next;
+    stage.classList.toggle('open', opened);
+    logo.setAttribute('aria-expanded', opened ? 'true' : 'false');
+    sheet.setAttribute('aria-hidden', opened ? 'false' : 'true');
+  }
+
+  logo.addEventListener('click', () => setOpen(!opened));
+  // A way out that does not depend on finding the icon again.
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
 
   addEventListener('scroll', onScroll, { passive: true });
   addEventListener('resize', () => {
