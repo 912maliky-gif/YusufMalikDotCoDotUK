@@ -376,6 +376,11 @@
     translate: -50% -50%;
     width: max-content;
     max-width: var(--sheet-max);
+    /* Three lines of three different lengths. Ranged left they share a left edge and
+       nothing else — and because the button's own label is centred inside its pill,
+       the shortest line under it, the note, reads as having slipped. One centre line
+       for all three, the same as when they stack under the icon on a narrow window. */
+    text-align: center;
     transform: translateX(calc(var(--sheet-x) - 20px));
     opacity: 0;
     pointer-events: none;
@@ -424,7 +429,6 @@
     .sheet {
       --sheet-x: 0px;
       max-width: min(320px, 78vw);
-      text-align: center;
       transform: translateY(calc(var(--icon) * 0.46 + 26px));
     }
     .stage.open .sheet { transform: translateY(calc(var(--icon) * 0.46 + 46px)); }
