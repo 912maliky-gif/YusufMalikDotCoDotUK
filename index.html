@@ -462,6 +462,11 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
+    /* Above the word, not merely after it. The wordmark carries a z-index of its own,
+       which lifted the letters over an anchor that is otherwise later in the markup —
+       so the whole pill answered to a click except the one part of it anybody would
+       aim at. Transparent, so the mark still reads through it. */
+    z-index: 2;
     pointer-events: none;
   }
   .plate.linked .tolink { pointer-events: auto; }
