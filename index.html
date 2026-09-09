@@ -937,5 +937,17 @@
     frame();
   });
 </script>
+<!-- Counting, in the lightest form that still answers the question: how many people
+     opened this, and roughly where from. No cookies, so there is nothing to consent
+     to; country level only, because that is all an IP honestly gives you.
+
+     Last on the page and async, so it can never be in the way of the mark arriving.
+
+     To stop it counting you, load any page here with #toggle-goatcounter on the end
+     of the URL — that sets a flag in that browser and it stops counting, with an
+     alert to say so. It is per browser rather than per person, so it wants doing once
+     on each: phone, iPad, Mac, and again in any other browser on them. -->
+<script data-goatcounter="https://yusufmalik.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>
