@@ -4,10 +4,39 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>a MALIK product</title>
+<!-- The mark's own face, and the only one that is not borrowed. Preloaded because
+     everything the page measures is measured against it, and fetched in CORS mode as
+     all fonts are, so the hint has to say so or the file is fetched twice. -->
+<link rel="preload" href="malik.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barrio&family=Birthstone&family=Explora&family=Hurricane&family=Nanum+Gothic&family=Qahiri&family=Rock+Salt&display=swap">
 <style>
+  /* EB Garamond, self-hosted — the same file the app renders the mark from, cut down
+     to the capitals it actually paints and pinned to the one weight the mark uses.
+     It had been named first in the stack and never loaded: the stylesheet on the next
+     line fetches eight faces and this was not among them, so the mark had been
+     quietly falling through to Hoefler Text on a Mac and to whatever a plain serif is
+     everywhere else.
+
+     That was never only a matter of one face looking wrong. Every other face in the
+     loop is scaled to match this one's ink, and the pill's width is measured from the
+     widest of them once they have been — so the whole carousel had been calibrated
+     against a stand-in.
+
+     `block` rather than `swap`: the mark spends the top of the page invisible and
+     fades in as you scroll, so the moment this spends unpainted is a moment nobody is
+     looking at it anyway — and no substitute is ever seen taking its place.
+
+     EB Garamond is under the SIL Open Font License; OFL.txt beside this file. */
+  @font-face {
+    font-family: "EB Garamond";
+    src: url("malik.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: block;
+  }
+
   /* Registered so they can be used inside calc() and colour mixing, and so they hold
      a sane value before the first scroll event lands. */
   @property --fade    { syntax: '<number>'; inherits: true; initial-value: 1; }
