@@ -300,7 +300,7 @@
     transform-style: preserve-3d;
     /* Steps aside to make room for the sheet, and comes back when it closes. */
     transform: translateX(0);
-    transition: transform 0.52s cubic-bezier(0.2, 0.7, 0.3, 1);
+    transition: transform 0.52s cubic-bezier(0.2, 0.7, 0.3, 1), opacity 0.4s ease-out;
   }
   .logo[disabled] { pointer-events: none; }
   /* --sheet-real is what the sheet came out as, written back by measure(). The
@@ -363,6 +363,57 @@
     /* Out of focus while it is still a long way off. */
     filter: blur(calc(9px * (1 - var(--arrive))));
     will-change: transform, filter;
+  }
+
+  /* Underneath the icon, in the same square it occupies, and painted over by it
+     because it comes first in the markup. Sweeping the icon aside is what uncovers
+     it — the sense being that it was under there the whole time rather than that it
+     has just been fetched. Rock Salt is already loaded for the wordmark, so a page
+     written by hand costs nothing extra to ask for. */
+  .notes {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    width: var(--icon);
+    height: var(--icon);
+    display: grid;
+    place-items: center;
+    font-family: "Rock Salt", "Bradley Hand", "Segoe Script", cursive;
+    font-size: clamp(20px, 5vmin, 34px);
+    line-height: 1.35;
+    color: var(--mark);
+    text-decoration: none;
+    /* Written on the slant, the way a word jotted on a page sits. */
+    transform: translateX(-16px) rotate(-3.5deg);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.52s cubic-bezier(0.2, 0.7, 0.3, 1), opacity 0.3s ease-out 0.06s;
+  }
+  .stage.peeled .notes {
+    transform: translateX(0) rotate(-3.5deg);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* Drawn rather than underlined: a line put there by the same hand. */
+  .notes::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    translate: -50% 0;
+    bottom: calc(50% - 1.5em);
+    width: 3.1em;
+    height: 0.34em;
+    border-bottom: 2px solid currentColor;
+    border-radius: 0 0 60% 40%;
+    opacity: 0.5;
+  }
+
+  /* Swept aside, not deleted: it stays on the page, dimmed, and a swipe the other
+     way brings it back. */
+  .stage.peeled .logo {
+    transform: translateX(calc(var(--icon) * -1)) rotate(-5deg);
+    opacity: 0.32;
   }
 
   /* What the icon opens onto. It arrives from just behind the icon rather than from
@@ -463,6 +514,7 @@
           <span class="article">a</span><span class="name"><span class="ink">MALIK</span><span class="baseline"></span></span><span class="noun">product</span>
         </p>
       </div>
+      <a class="notes" href="notes.html" tabindex="-1" aria-hidden="true">notes</a>
       <button class="logo" type="button" aria-expanded="false" aria-controls="sheet" disabled>
         <span class="icon"><img class="ground" src="logo-ground.jpg" alt="" decoding="async"></span>
         <span class="pane"></span>
@@ -487,6 +539,7 @@
   const baseline = document.querySelector('.baseline');
   const logo = document.querySelector('.logo');
   const sheet = document.querySelector('.sheet');
+  const notes = document.querySelector('.notes');
 
   /* One canvas, used wherever the question is where the paint actually falls rather
      than where the box around it does. */
@@ -616,7 +669,7 @@
     if (nowReady !== ready) {
       ready = nowReady;
       logo.disabled = !ready;
-      if (!ready) setOpen(false);
+      if (!ready) { setOpen(false); setPeeled(false); }
     }
 
     // Swiping is only offered once the mark has arrived; on the way there the pill's
@@ -733,6 +786,20 @@
     }, 170);
   }
 
+  /* Is this gesture aimed at the icon rather than at the page? Asked of the point,
+     not of the element under it: once the icon has been swept aside it is no longer
+     where it was, and the note that replaced it has to answer for the same square. */
+  function onIcon(x, y) {
+    if (!ready) return false;
+    const inside = (b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
+    // The note never moves, and it occupies exactly the square the icon sits in when
+    // it is home — so it stands in as the target even while the icon itself is still
+    // in flight. Asking only where the icon is right now would mean a second swipe,
+    // thrown before the first had finished, sailed past it and changed the face.
+    return inside(notes.getBoundingClientRect())
+        || inside(logo.getBoundingClientRect());
+  }
+
   // Trackpad and mouse wheel.
   let wheelHeld = false;
   let wheelIdle;
@@ -748,15 +815,20 @@
     wheelIdle = setTimeout(() => { wheelHeld = false; }, 220);
     if (wheelHeld) return;
     wheelHeld = true;
+    // Over the icon the same gesture sweeps it aside instead of changing the face.
+    if (onIcon(e.clientX, e.clientY)) { setPeeled(e.deltaX > 0); return; }
     step(e.deltaX > 0 ? 1 : -1);
     // Not passive, because a passive listener is forbidden from refusing the gesture.
   }, { passive: false });
 
   // Touch: one swipe, one face, by definition of the gesture.
-  let touchX = null, touchY = null;
+  let touchX = null, touchY = null, touchFromIcon = false;
   addEventListener('touchstart', (e) => {
     touchX = e.touches[0].clientX;
     touchY = e.touches[0].clientY;
+    // Decided where the finger lands, not where it lifts: the icon moves during the
+    // gesture, and what was being aimed at is settled at the start.
+    touchFromIcon = onIcon(touchX, touchY);
   }, { passive: true });
   addEventListener('touchend', (e) => {
     if (touchX === null) return;
@@ -764,13 +836,28 @@
     const dy = e.changedTouches[0].clientY - touchY;
     touchX = touchY = null;
     if (Math.abs(dx) < 40 || Math.abs(dx) <= Math.abs(dy)) return;
+    if (touchFromIcon) {
+      setPeeled(dx < 0);
+      // A swipe that ends on a button would otherwise be delivered as a tap as well,
+      // and open the sheet on the way past.
+      swiped = true;
+      clearTimeout(swipeIdle);
+      swipeIdle = setTimeout(() => { swiped = false; }, 400);
+      return;
+    }
     step(dx < 0 ? 1 : -1);
   }, { passive: true });
 
   // Arrow keys, so this is reachable without a trackpad.
   addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowRight') step(1);
-    else if (e.key === 'ArrowLeft') step(-1);
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    // With the icon or the note itself focused, the arrows work the gesture rather
+    // than the faces — so none of this needs a trackpad.
+    if (ready && (document.activeElement === logo || document.activeElement === notes)) {
+      setPeeled(e.key === 'ArrowLeft');
+      return;
+    }
+    step(e.key === 'ArrowRight' ? 1 : -1);
   });
 
   /* Each face is measured once it has actually loaded and scaled towards the width of
@@ -832,18 +919,43 @@
 
   let ready = false;
   let opened = false;
+  let peeled = false;
+  let swiped = false;
+  let swipeIdle;
 
+  /* Two things the icon can do, and it cannot be doing both: opening the sheet beside
+     it and being swept off the note underneath it are alternatives, so each one puts
+     the other away. */
   function setOpen(next) {
     if (next === opened) return;
     opened = next;
     stage.classList.toggle('open', opened);
     logo.setAttribute('aria-expanded', opened ? 'true' : 'false');
     sheet.setAttribute('aria-hidden', opened ? 'false' : 'true');
+    if (opened) setPeeled(false);
   }
 
-  logo.addEventListener('click', () => setOpen(!opened));
+  function setPeeled(next) {
+    if (next === peeled) return;
+    peeled = next;
+    stage.classList.toggle('peeled', peeled);
+    notes.setAttribute('aria-hidden', peeled ? 'false' : 'true');
+    // Out of the tab order while it is out of sight, so nothing invisible can be
+    // reached by tabbing to it.
+    notes.tabIndex = peeled ? 0 : -1;
+    if (peeled) setOpen(false);
+  }
+
+  logo.addEventListener('click', () => {
+    if (swiped) return;          // that was a swipe going past, not a tap
+    setOpen(!opened);
+  });
   // A way out that does not depend on finding the icon again.
-  addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+  addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    setOpen(false);
+    setPeeled(false);
+  });
 
   addEventListener('scroll', onScroll, { passive: true });
   addEventListener('resize', () => {
