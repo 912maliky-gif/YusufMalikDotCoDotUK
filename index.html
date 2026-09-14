@@ -273,7 +273,17 @@
   /* Five things across a phone. The pages give up size before the mark does, and
      the slack between them goes first. */
   @media (max-width: 520px) {
-    .page { font-size: 0.4em; padding: 0.5em 0.45em; }
+    /* And a long name breaks onto two lines rather than pushing its neighbour off
+       the edge — the bar is as tall as the mark, and two short lines of a page name
+       sit inside that with room over. */
+    .page {
+      font-size: 0.4em;
+      padding: 0.5em 0.45em;
+      white-space: normal;
+      text-align: center;
+      max-width: 4.6em;
+      line-height: 1.12;
+    }
     .pages { gap: 0.05em; }
     .pages.left  { margin-right: 0.25em; }
     .pages.right { margin-left: 0.25em; }
@@ -589,7 +599,7 @@
       <div class="bar">
         <nav class="pages left" aria-label="Pages">
           <span class="page">X</span>
-          <a class="page" href="notes.html">Notes</a>
+          <span class="page">Notes</span>
         </nav>
         <div class="plate">
         <span class="box" aria-hidden="true"></span>
@@ -599,7 +609,7 @@
         <a class="tolink" href="notes.html" tabindex="-1" aria-hidden="true"></a>
         </div>
         <nav class="pages right" aria-label="Pages">
-          <span class="page">X</span>
+          <span class="page">Yusuf&rsquo;s Preview</span>
           <span class="page">X</span>
         </nav>
       </div>
@@ -867,8 +877,12 @@
      long tail of events and a phone fling sends one; both have to count once. The
      lock is taken on the first event of a gesture and only released once the gesture
      has been quiet for a moment, so the tail is spent against a closed door. */
+  let pendingStep = 0;
   function step(direction) {
-    if (swapping || !parked || active !== HOME) return;
+    if (!parked || active !== HOME) return;
+    // Thrown while the last one is still landing: kept, and taken the moment it has.
+    // Dropped, it read as a swipe that did nothing.
+    if (swapping) { pendingStep = direction; return; }
     swapping = true;
 
     const away = `translateX(${-direction * 0.4}em)`;
@@ -891,13 +905,29 @@
       ink.style.transform = 'translateX(0)';
       ink.style.opacity = '1';
 
-      setTimeout(() => { swapping = false; }, 290);
+      setTimeout(() => {
+        swapping = false;
+        if (pendingStep) { const d = pendingStep; pendingStep = 0; step(d); }
+      }, 290);
     }, 170);
   }
 
-  // Trackpad and mouse wheel.
-  let wheelHeld = false;
-  let wheelIdle;
+  /* Trackpad and mouse wheel.
+
+     A trackpad swipe is not one event but a burst of them, and on a Mac the burst
+     does not stop when the fingers lift: the momentum keeps sending events, smaller
+     and smaller, for the better part of a second. A lock that waits for silence
+     before it lets go was waiting through all of that — and a second swipe thrown
+     into the tail of the first was swallowed. Half the swipes, felt from the other
+     side.
+
+     So the lock is released by the shape of the events instead. A swipe ramps up
+     and then only ever decays; the tail is the decay. A fresh push shows up as the
+     size jumping back up once it had fallen, or as the direction turning round —
+     and either one is a new swipe, whatever the clock says. The idle timer stays
+     as the backstop for a burst that simply ends. */
+  let wheelHeld = false, wheelIdle;
+  let wheelDir = 0, wheelPrev = 0, wheelPeak = 0;
   addEventListener('wheel', (e) => {
     // A mostly vertical wheel is someone scrolling the page, not choosing a face —
     // and it is left alone entirely, so ordinary scrolling is never intercepted.
@@ -908,41 +938,41 @@
     if (e.cancelable) e.preventDefault();
     clearTimeout(wheelIdle);
     wheelIdle = setTimeout(() => { wheelHeld = false; }, 220);
-    if (wheelHeld) return;
+
+    const mag = Math.abs(e.deltaX), dir = Math.sign(e.deltaX);
+    const turned = dir !== wheelDir;
+    const pushed = wheelPrev < wheelPeak * 0.6 && mag > wheelPrev * 1.6 && mag > 8;
+    const fresh = !wheelHeld || turned || pushed;
+    wheelPrev = mag;
+    wheelDir = dir;
+    if (!fresh) { wheelPeak = Math.max(wheelPeak, mag); return; }
+
     wheelHeld = true;
-    // On the bar but not on the pill, the slab is what moves — and it follows the
-    // finger: swipe left, it goes left. On the pill, the faces turn as before.
-    if (onBar(e.clientX, e.clientY) && !onPill(e.clientX, e.clientY)) {
-      setActive(active + (e.deltaX > 0 ? -1 : 1));
-      return;
-    }
-    step(e.deltaX > 0 ? 1 : -1);
+    wheelPeak = mag;
+    // deltaX is positive when the fingers move left, so the slab goes left.
+    sideways(e.clientX, e.clientY, dir > 0 ? -1 : 1);
     // Not passive, because a passive listener is forbidden from refusing the gesture.
   }, { passive: false });
 
   // Touch: one swipe, one face, by definition of the gesture.
-  let touchX = null, touchY = null, touchOnBar = false, touchOnPill = false;
+  let touchX = null, touchY = null, touchStartX = 0, touchStartY = 0;
   addEventListener('touchstart', (e) => {
-    touchX = e.touches[0].clientX;
-    touchY = e.touches[0].clientY;
-    // Settled where the finger lands, not where it lifts — the slab may well have
-    // moved out from under it by then.
-    touchOnBar = onBar(touchX, touchY);
-    touchOnPill = onPill(touchX, touchY);
+    touchX = touchStartX = e.touches[0].clientX;
+    touchY = touchStartY = e.touches[0].clientY;
   }, { passive: true });
   addEventListener('touchend', (e) => {
     if (touchX === null) return;
     const dx = e.changedTouches[0].clientX - touchX;
     const dy = e.changedTouches[0].clientY - touchY;
     touchX = touchY = null;
-    if (Math.abs(dx) < 40 || Math.abs(dx) <= Math.abs(dy)) return;
+    // Short enough that a flick counts, and sideways enough that a scroll does not.
+    if (Math.abs(dx) < 24 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
     // A swipe that lifts off over the pill would otherwise be delivered as a tap as
     // well — and when the note is the thing showing, the pill is a link.
     swiped = true;
     clearTimeout(swipeIdle);
     swipeIdle = setTimeout(() => { swiped = false; }, 400);
-    if (touchOnBar && !touchOnPill) { setActive(active + (dx < 0 ? -1 : 1)); return; }
-    step(dx < 0 ? 1 : -1);
+    sideways(touchStartX, touchStartY, dx < 0 ? -1 : 1);
   }, { passive: true });
 
   // Arrow keys, so this is reachable without a trackpad.
@@ -1018,7 +1048,19 @@
   const pages = [...document.querySelectorAll('.page')];
   const ORDER = [pages[0], pages[1], plate, pages[2], pages[3]];
   const HOME = 2;
+  /* The page whose content is the reveal below. Going to it scrolls the page down
+     through the reveal, so the icon arrives the way it does when you scroll there
+     yourself; leaving it scrolls back to the top of the reveal, so the icon goes
+     the way it came rather than being left behind on a page it does not belong to. */
+  const PREVIEW = 3;
   let active = HOME;
+
+  function scrollToReveal(there) {
+    const vh = innerHeight;
+    const room = Math.max((document.documentElement.scrollHeight - vh) - vh * 0.9, 1);
+    const top = there ? vh * 0.9 + room * 0.85 : vh * 0.9 + 1;
+    scrollTo({ top, behavior: 'smooth' });
+  }
 
   /* Where the slab is put is measured, not laid out: a page's box, in pixels, relative
      to the pill the slab lives inside. At home the four sides are given as fractions
@@ -1059,9 +1101,12 @@
       void box.offsetWidth;     // makes the restatement land before the easing starts
       plate.classList.add('gliding');
     }
+    const was = active;
     active = i;
     placeBox(ORDER[i]);
     setOpen(false);
+    if (i === PREVIEW) scrollToReveal(true);
+    else if (was === PREVIEW) scrollToReveal(false);
   }
 
   /* Back to the mark, and the easing off again: from here the slab is the pill's
@@ -1079,16 +1124,36 @@
     const b = el.getBoundingClientRect();
     return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
   }
-  function onBar(x, y) { return parked && inside(x, y, bar); }
+  /* A band rather than the bar's exact edges: a thumb aimed at a row of words
+     lands a little above or below it as often as not, and a swipe that missed by
+     four pixels doing nothing reads as a swipe that was ignored. */
+  function onBar(x, y) {
+    if (!parked) return false;
+    const b = bar.getBoundingClientRect();
+    return x >= b.left && x <= b.right && y >= b.top - 36 && y <= b.bottom + 36;
+  }
   function onPill(x, y) { return active === HOME && inside(x, y, plate); }
 
-  // A tap on one of the pages sends the slab to it. The one that is a link goes
-  // where it goes; the placeholders have nowhere to go yet, so the slab is all that
-  // happens.
-  pages.forEach((el, k) => {
-    el.addEventListener('click', (e) => {
-      if (swiped) { e.preventDefault(); return; }
-      if (el.tagName === 'A') return;
+  /* One sideways swipe, decided once. On the pill with the slab at home, the faces
+     turn. Anywhere on the bar otherwise, the slab moves — and once the slab has
+     left the mark there is nothing else a sideways swipe could mean, so from
+     anywhere at all it moves the slab, following the finger. */
+  function sideways(x, y, toward) {
+    if (parked && (active !== HOME || (onBar(x, y) && !onPill(x, y)))) {
+      setActive(active + toward);
+      return;
+    }
+    step(-toward);
+  }
+
+  // A tap on a page sends the slab to it. None of them is a link: each is a place on
+  // this page rather than a way off it, and the one that has anything on it yet is
+  // the preview, whose content is the reveal further down. Notes as a page is as
+  // blank as the others — the notes site is still reached the way it was, one swipe
+  // right on the mark.
+  pages.forEach((el) => {
+    el.addEventListener('click', () => {
+      if (swiped) return;
       setActive(ORDER.indexOf(el));
     });
   });
