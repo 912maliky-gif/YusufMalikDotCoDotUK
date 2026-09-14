@@ -6,7 +6,7 @@
 <title>Yusuf's Notes</title>
 <style>
 :root{
-  --bg:#a6a998; --panel:#ffffff; --ink:#17281a; --muted:#5b7360;
+  --bg:#b8c5b0; --panel:#ffffff; --ink:#17281a; --muted:#5b7360;
   --line:#c0d8c6; --line2:#a4c2ab; --accent:#2f6b3a; --accent-soft:#e0f0e4; --accent-ink:#ffffff;
   --node:#e9f4ec; --node-line:#bcd7c3; --danger:#a8412f; --done:#8fa694;
   --icon:#7c7c7a; --icon-hi:#17281a;
@@ -997,6 +997,34 @@ function fileActions(){
 }
 
 var markOpen = false;
+/* Opened and closed on the element that is there rather than by drawing the bar
+   again: a re-render would land the pages already in place, and the opening is the
+   point. The markup reads markOpen too, so a later render agrees. */
+function setMark(open){
+  markOpen = open;
+  var mk = app.querySelector(".mark");
+  if(!mk) return;
+  mk.classList.toggle("open", open);
+  var b = mk.querySelector(".mword");
+  if(b) b.setAttribute("aria-expanded", open ? "true" : "false");
+}
+/* Left open with nothing chosen, it folds itself back when the pointer has wandered
+   off it — after a moment, so brushing past the edge does not snap it shut — and at
+   once on a click anywhere else. */
+var markAway = null;
+document.addEventListener("pointermove", function(e){
+  if(!markOpen) return;
+  var mk = app.querySelector(".mark");
+  if(!mk) return;
+  var r = mk.getBoundingClientRect(), pad = 28;
+  var inside = e.clientX >= r.left - pad && e.clientX <= r.right + pad
+            && e.clientY >= r.top - pad && e.clientY <= r.bottom + pad;
+  if(inside){ clearTimeout(markAway); markAway = null; return; }
+  if(markAway === null) markAway = setTimeout(function(){ markAway = null; setMark(false); }, 420);
+});
+document.addEventListener("click", function(e){
+  if(markOpen && !e.target.closest(".mark")) setMark(false);
+}, true);
 function markMenu(){
   return '<nav class="mark' + (markOpen ? " open" : "") + '" aria-label="MALIK">'
     + '<span class="mside l">'
@@ -1989,12 +2017,7 @@ app.addEventListener("click", function(e){
   /* The mark's menu is toggled on the element that is there rather than by drawing
      the bar again: a re-render would land the pages already in place, and the
      opening is the point. */
-  if(act === "mark"){
-    markOpen = !markOpen;
-    var mk = el.closest(".mark");
-    if(mk){ mk.classList.toggle("open", markOpen); el.setAttribute("aria-expanded", markOpen ? "true" : "false"); }
-    return;
-  }
+  if(act === "mark"){ setMark(!markOpen); return; }
 
   switch(act){
     case "theme": setTheme(resolvedTheme() === "dark" ? "light" : "dark"); break;
