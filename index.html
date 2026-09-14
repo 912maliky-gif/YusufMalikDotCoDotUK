@@ -259,8 +259,27 @@
     text-decoration: none;
     white-space: nowrap;
     transform: scaleX(0.8);
-    opacity: var(--lift);
+
+    /* Not there until the mark has finished climbing and stopped — its final state
+       — and then out from behind the pill to their places. --from is each page's
+       own distance back to the middle of the pill, measured, so every one of them
+       starts from the same place: behind the mark. Below the pill while they travel
+       (z-index 0 against its 1), so they emerge from under it rather than across it;
+       raised above it once they have arrived, so the slab can pass beneath them. */
+    z-index: 0;
+    opacity: 0;
+    transform: translateX(var(--from, 0px)) scaleX(0.8) scale(0.86);
+    transition:
+      transform 0.62s cubic-bezier(0.2, 0.7, 0.3, 1),
+      opacity 0.4s ease-out;
   }
+  /* The inner two lead and the outer two follow, so it reads as one thing opening. */
+  .pages.left  .page:first-child, .pages.right .page:last-child  { transition-delay: 0.09s; }
+  .bar.arrived .page {
+    opacity: 1;
+    transform: translateX(0) scaleX(0.8) scale(1);
+  }
+  .bar.arrived.settled .page { z-index: 2; }
   /* Five things across a phone. The pages give up size before the mark does, and
      the slack between them goes first. */
   @media (max-width: 520px) {
@@ -572,7 +591,7 @@
       <div class="bar">
         <nav class="pages left" aria-label="Pages">
           <span class="page">X</span>
-          <span class="page">Notes</span>
+          <a class="page" href="notes.html">Notes</a>
         </nav>
         <div class="plate">
         <span class="box" aria-hidden="true"></span>
@@ -767,7 +786,9 @@
       // The moment it arrives, the height it has arrived at is the height it keeps.
       boxHeight = boxHeight ?? plate.offsetHeight;
       plate.style.height = `${boxHeight}px`;
+      arrive();
     }
+    if (!parked && wasParked) depart();
 
     // Half the room above the slab is how far it has to climb to reach the top of the
     // window; the perch is what stops it landing flush against the edge.
@@ -886,8 +907,27 @@
     const vh = innerHeight;
     const room = Math.max((document.documentElement.scrollHeight - vh) - vh * 0.9, 1);
     const top = there ? vh * 0.9 + room * 0.85 : vh * 0.9 + 1;
-    scrollTo({ top, behavior: 'smooth' });
+    glideTo(top, there ? 2400 : 1400);
   }
+
+  /* The browser's own smooth scroll goes at the browser's own speed, which is quick
+     and not adjustable, and the icon was arriving before anyone had seen it coming.
+     This one takes the time it is given, easing in and out. A hand on the page
+     cancels it — a vertical wheel, or a touch — so it never fights a reader who has
+     decided to scroll for themselves. */
+  let glide = 0;
+  function glideTo(top, ms) {
+    const from = scrollY, dist = top - from, t0 = performance.now(), mine = ++glide;
+    const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    (function tick(now) {
+      if (mine !== glide) return;
+      const t = Math.min(1, (now - t0) / ms);
+      scrollTo(0, from + dist * ease(t));
+      if (t < 1) requestAnimationFrame(tick);
+    })(t0);
+  }
+  addEventListener('wheel', (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) glide++; }, { passive: true });
+  addEventListener('touchstart', () => { glide++; }, { passive: true });
 
   /* Going to the preview: the page is given its depth first, so there is somewhere
      to scroll to, and then scrolled there. */
@@ -923,12 +963,14 @@
       box.style.borderRadius = '';
       return;
     }
-    const home = plate.getBoundingClientRect();
-    const to = target.getBoundingClientRect();
-    box.style.left = `${to.left - home.left}px`;
-    box.style.top = `${to.top - home.top}px`;
-    box.style.width = `${to.width}px`;
-    box.style.height = `${to.height}px`;
+    // Layout offsets rather than bounding rects: a page is measured by where it
+    // will stand, not where its entrance has it at this instant. The squeeze is a
+    // transform too, so the visible width is put back by hand.
+    const sq = 0.8;
+    box.style.left = `${target.offsetLeft + target.offsetWidth * (1 - sq) / 2 - plate.offsetLeft}px`;
+    box.style.top = `${target.offsetTop - plate.offsetTop}px`;
+    box.style.width = `${target.offsetWidth * sq}px`;
+    box.style.height = `${target.offsetHeight}px`;
     // The corners are drawn at the size of whatever the slab is around.
     box.style.borderRadius = `${0.62 * parseFloat(getComputedStyle(target).fontSize)}px`;
   }
@@ -958,6 +1000,26 @@
     noteAddress(i);
     if (i === PREVIEW) enterReveal();
     else if (was === PREVIEW) scrollToReveal(false);   // frame() finishes the leaving
+  }
+
+  /* The pages' entrance. Each is told how far back to the middle of the pill it is
+     — from there is where it comes from — and the bar is marked arrived. They are
+     kept beneath the pill for the length of the journey and lifted above it after,
+     when there is no longer any overlap for the change to show in. */
+  let settledAt;
+  function arrive() {
+    const midX = plate.offsetLeft + plate.offsetWidth / 2;
+    pages.forEach((el) => {
+      el.style.setProperty('--from', `${midX - (el.offsetLeft + el.offsetWidth / 2)}px`);
+    });
+    void bar.offsetWidth;
+    bar.classList.add('arrived');
+    clearTimeout(settledAt);
+    settledAt = setTimeout(() => bar.classList.add('settled'), 720);
+  }
+  function depart() {
+    clearTimeout(settledAt);
+    bar.classList.remove('arrived', 'settled');
   }
 
   /* Back to the mark, and the easing off again: from here the slab is the pill's
@@ -1013,8 +1075,9 @@
   // blank as the others — the notes site is still reached the way it was, one swipe
   // right on the mark.
   pages.forEach((el) => {
-    el.addEventListener('click', () => {
-      if (swiped) return;
+    el.addEventListener('click', (e) => {
+      if (swiped) { e.preventDefault(); return; }   // a swipe lifting off, not a tap
+      if (el.tagName === 'A') return;               // Notes: a tap goes to the notes site
       setActive(ORDER.indexOf(el));
     });
   });
