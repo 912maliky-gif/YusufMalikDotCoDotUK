@@ -458,10 +458,22 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    opacity: var(--bloom);
     /* Comes to rest rather than arriving at rest: a little over size, settling to
        its own. */
     transform: scale(calc(1.08 - 0.08 * var(--bloom)));
+  }
+  /* "saturate": the painting is in the square from the first moment the square is,
+     with the colour taken out of it, and the colour comes up through it as --bloom
+     rises. A little brighter while it is grey, so it reads as a pale plate and not a
+     dark one; the brightness settles as the colour arrives. */
+  [data-ground="saturate"] .ground {
+    opacity: 1;
+    filter: saturate(var(--bloom)) brightness(calc(1 + 0.10 * (1 - var(--bloom))));
+  }
+  /* "bloom": the way it was. The square arrives as a plain plate — the file's own
+     base fill — and the painting fades in over it. */
+  [data-ground="bloom"] .ground {
+    opacity: var(--bloom);
   }
 
   .pane {
@@ -587,7 +599,13 @@
 </head>
 <body>
   <div class="scroller">
-    <div class="stage">
+    <!-- data-ground: how the painting arrives inside the icon.
+           "saturate" — the painting is there from the moment the square is, drained of
+                        colour, and the colour comes up through it.
+           "bloom"    — the way it was: the square arrives as a plain plate and the
+                        painting fades in over it.
+         One word to change. Both are kept in the stylesheet, under .ground. -->
+    <div class="stage" data-ground="saturate">
       <div class="bar">
         <nav class="pages left" aria-label="Pages">
           <span class="page">X</span>
