@@ -6,7 +6,7 @@
 <title>Yusuf's Notes</title>
 <style>
 :root{
-  --bg:#d2e7d6; --panel:#ffffff; --ink:#17281a; --muted:#5b7360;
+  --bg:#a6a998; --panel:#ffffff; --ink:#17281a; --muted:#5b7360;
   --line:#c0d8c6; --line2:#a4c2ab; --accent:#2f6b3a; --accent-soft:#e0f0e4; --accent-ink:#ffffff;
   --node:#e9f4ec; --node-line:#bcd7c3; --danger:#a8412f; --done:#8fa694;
   --icon:#7c7c7a; --icon-hi:#17281a;
@@ -26,6 +26,9 @@
   --icon:#8f948f; --icon-hi:#e9ece8;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.35);
 }
+/* The mark's face: the same file the main site draws it from, beside this one. */
+@font-face{font-family:"EB Garamond";src:url("malik.woff2") format("woff2");font-weight:400;font-style:normal;font-display:block}
+
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);
@@ -43,6 +46,43 @@ input,textarea,select{font:inherit;color:inherit}
 .crumb:hover{background:var(--bg);color:var(--ink)}
 .sep{opacity:.5}
 .top .spacer{flex:1}
+
+/* ---------- the mark, and the menu it opens into ----------
+   "a MALIK product" sits in the middle of the bar. Press it and the words either side
+   close, and the site's pages come out from behind the mark to stand either side of
+   it, the way they do on the site itself. Press the mark again and they go back.
+
+   A grid with the outer two columns equal, so the mark stays on the centre line of
+   the bar however unlike each other the two sides are. Closed, the pages have no
+   width at all, and the mark alone is what is centred. */
+.mark{position:absolute;left:50%;top:50%;translate:-50% -50%;display:grid;grid-template-columns:1fr auto 1fr;
+  align-items:center;white-space:nowrap;font-family:"EB Garamond",Garamond,"Hoefler Text",serif;z-index:2}
+.mside{display:flex;align-items:center;gap:2px}
+.mside.l{justify-self:end}
+.mside.r{justify-self:start}
+.mword{display:inline-flex;align-items:baseline;gap:6px;padding:3px 10px;border-radius:8px;color:var(--ink);cursor:pointer}
+.mword:hover{background:var(--accent-soft)}
+.mname{font-size:19px;letter-spacing:.044em;line-height:1;display:inline-block;transform:scaleX(.8);margin:0 -6px}
+.marticle,.mnoun{font:12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--muted);
+  display:inline-block;overflow:hidden;max-width:64px;transition:max-width .3s cubic-bezier(.2,.7,.3,1),opacity .2s,margin .3s}
+.mark.open .marticle,.mark.open .mnoun{max-width:0;opacity:0;margin:0 -3px}
+/* The pages. Tucked in behind the mark while the menu is closed — no width, faded,
+   drawn a little toward the centre — and out to their places when it opens. */
+.mpage{font-size:13px;letter-spacing:.044em;line-height:1;color:var(--ink);text-decoration:none;border-radius:7px;
+  display:inline-block;overflow:hidden;max-width:0;padding:5px 0;margin:0;opacity:0;pointer-events:none;
+  transform:scale(.9);transition:max-width .34s cubic-bezier(.2,.7,.3,1),padding .34s,margin .34s,opacity .24s,transform .34s cubic-bezier(.2,.7,.3,1)}
+.mside.l .mpage{transform:translateX(14px) scale(.9)}
+.mside.r .mpage{transform:translateX(-14px) scale(.9)}
+.mark.open .mpage{max-width:140px;padding:5px 9px;margin:0 2px;opacity:1;pointer-events:auto;transform:none}
+.mside.l .mpage:last-child{margin-right:6px}
+.mside.r .mpage:first-child{margin-left:6px}
+.mpage:hover{background:var(--accent-soft)}
+/* The page you are on: held in a well the colour of the ground, and not a link. */
+.mpage.here{background:var(--bg);color:var(--ink);cursor:default}
+.mpage.here:hover{background:var(--bg)}
+@media (max-width:640px){
+  .mark{display:none}   /* nowhere to put five things across a phone's bar */
+}
 .btn{border:1px solid var(--line2);border-radius:6px;padding:5px 11px;background:var(--panel);
   color:var(--muted);white-space:nowrap}
 .btn:hover{color:var(--ink);border-color:var(--muted)}
@@ -956,6 +996,23 @@ function fileActions(){
     + '</span>';
 }
 
+var markOpen = false;
+function markMenu(){
+  return '<nav class="mark' + (markOpen ? " open" : "") + '" aria-label="MALIK">'
+    + '<span class="mside l">'
+    +   '<a class="mpage" href="index.html#one">X</a>'
+    +   '<span class="mpage here" aria-current="page">Notes</span>'
+    + '</span>'
+    + '<button class="mword" type="button" data-act="mark" aria-expanded="' + (markOpen ? "true" : "false") + '">'
+    +   '<span class="marticle">a</span><span class="mname">MALIK</span><span class="mnoun">product</span>'
+    + '</button>'
+    + '<span class="mside r">'
+    +   '<a class="mpage" href="index.html#preview">Yusuf’s Preview</a>'
+    +   '<a class="mpage" href="index.html#five">X</a>'
+    + '</span>'
+    + '</nav>';
+}
+
 function topbar(crumbs, right){
   return banner() + '<div class="top">'
     + '<span class="brand">Yusuf’s Notes</span>'
@@ -963,6 +1020,7 @@ function topbar(crumbs, right){
     + '<div class="crumbs">' + crumbs + '</div>'
     + '<span class="spacer"></span>'
     + (right||"") + fileActions()
+    + markMenu()
     + '</div>';
 }
 
@@ -1927,6 +1985,16 @@ app.addEventListener("click", function(e){
      like Save file have no note context at all. */
   if(NEEDS_PAGE[act] && (!c.n || !c.p)) return;
   if(NEEDS_BLOCK[act] && !c.b) return;
+
+  /* The mark's menu is toggled on the element that is there rather than by drawing
+     the bar again: a re-render would land the pages already in place, and the
+     opening is the point. */
+  if(act === "mark"){
+    markOpen = !markOpen;
+    var mk = el.closest(".mark");
+    if(mk){ mk.classList.toggle("open", markOpen); el.setAttribute("aria-expanded", markOpen ? "true" : "false"); }
+    return;
+  }
 
   switch(act){
     case "theme": setTheme(resolvedTheme() === "dark" ? "light" : "dark"); break;

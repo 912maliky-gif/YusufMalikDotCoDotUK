@@ -8,9 +8,6 @@
      everything the page measures is measured against it, and fetched in CORS mode as
      all fonts are, so the hint has to say so or the file is fetched twice. -->
 <link rel="preload" href="malik.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barrio&family=Birthstone&family=Explora&family=Hurricane&family=Nanum+Gothic&family=Qahiri&family=Rock+Salt&display=swap">
 <style>
   /* EB Garamond, self-hosted — the same file the app renders the mark from, cut down
      to the capitals it actually paints and pinned to the one weight the mark uses.
@@ -170,7 +167,11 @@
      Most of this is the icon's. The mark is done climbing inside the first window's
      worth; the rest is the reveal, which needs the room to be a reveal rather than a
      flicker. */
-  .scroller { height: 460vh; height: 460svh; }
+  .scroller { height: 190vh; height: 190svh; }
+  /* Only the preview page has anything below the bar — the reveal — so only the
+     preview page has the room for it. On every other page the scroll ends where the
+     climb does, rather than running on into four windows of nothing. */
+  .scroller.deep { height: 460vh; height: 460svh; }
 
   .stage {
     position: sticky;
@@ -199,16 +200,6 @@
     padding: 0.52em var(--pad-x);
     font-size: var(--big);
 
-    /* The room the broadest face needs, held as a floor the closing pill stops at
-       rather than a size it reaches for at the end. The words either side close as
-       you scroll and the pill closes with them — but it stops here instead of drawing
-       all the way in to the name, so the size it settles at on arrival is a size it
-       has already shrunk to. Applied at the moment of arrival instead, as it was, a
-       pill that had just finished closing sprang back open by the better part of a
-       letter. Now it only ever contracts. --floor is a multiple of the mark's own
-       size, measured from the faces once they have loaded; the padding is added back
-       because the box is border-box. */
-    min-width: calc(var(--floor, 0) * 1em + var(--pad-x) * 2);
     /* A stacking context of its own, so the slab can sit behind the letters at a
        z-index below zero without falling behind the page. */
     z-index: 1;
@@ -359,11 +350,8 @@
   .noun    { width: calc(var(--wn, 0px) * (1 - var(--collapse))); }
 
   .name {
-    font-family: var(--face);
-    /* Each face is scaled to sit at about the same width as the others, so the pill
-       does not lurch between a wide one and a narrow one. The number is measured from
-       the face itself once it has loaded, not guessed per font. */
-    font-size: calc(1em * var(--face-scale, 1));
+    font-family: "EB Garamond", Garamond, "Adobe Garamond Pro", "Hoefler Text", serif;
+    font-size: 1em;
     font-weight: 400;
     letter-spacing: 0.044em;   /* 1.5pt at 34pt */
     color: var(--mark);
@@ -377,7 +365,8 @@
     /* Only the Garamond original is squeezed: that narrowing is part of the mark, and
        applied to a display face drawn at its own proportions it would just look like
        a mistake. */
-    transform: scaleX(var(--squeeze, 1));
+    --squeeze: 0.8;
+    transform: scaleX(var(--squeeze));
   }
 
   /* ---- The icon, and the reveal that carries it in --------------------------- */
@@ -575,22 +564,6 @@
     justify-content: center;
   }
 
-  /* On one slot of the loop the pill is a link, and on the other nine it is not. Laid
-     over the pill rather than wrapped around it, so the mark's own markup — and the
-     swap that slides it sideways — is left exactly as it was. A real anchor, so it
-     behaves like one: opens in a new tab if you ask it to, and says where it goes. */
-  .tolink {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    /* Above the word, not merely after it. The wordmark carries a z-index of its own,
-       which lifted the letters over an anchor that is otherwise later in the markup —
-       so the whole pill answered to a click except the one part of it anybody would
-       aim at. Transparent, so the mark still reads through it. */
-    z-index: 2;
-    pointer-events: none;
-  }
-  .plate.linked .tolink { pointer-events: auto; }
 </style>
 </head>
 <body>
@@ -606,7 +579,6 @@
         <p class="wordmark">
           <span class="article">a</span><span class="name"><span class="ink">MALIK</span><span class="baseline"></span></span><span class="noun">product</span>
         </p>
-        <a class="tolink" href="notes.html" tabindex="-1" aria-hidden="true"></a>
         </div>
         <nav class="pages right" aria-label="Pages">
           <span class="page">Yusuf&rsquo;s Preview</span>
@@ -628,7 +600,6 @@
 <script>
   const root = document.documentElement;
   const ink = document.querySelector('.ink');
-  const tolink = document.querySelector('.tolink');
   const bar = document.querySelector('.bar');
   const box = document.querySelector('.box');
   const stage = document.querySelector('.stage');
@@ -744,7 +715,12 @@
     // The last 15% is left alone, so the icon is finished a little before the floor
     // rather than exactly on it.
     const room = Math.max((document.documentElement.scrollHeight - vh) - vh * 0.9, 1);
-    const q = clamp01((window.scrollY - vh * 0.9) / (room * 0.85));
+    // The reveal is the preview page's, and only the preview page's. On any other page
+    // the reading is zero however far the page is scrolled — the icon is not below
+    // the mark, it is on another page. `revealing` outlasts the page by the length of
+    // the scroll back, so the icon leaves the way it came instead of vanishing.
+    const q = revealing ? clamp01((window.scrollY - vh * 0.9) / (room * 0.85)) : 0;
+    if (revealing && active !== PREVIEW && window.scrollY <= vh * 0.9 + 2) leaveReveal();
 
     // Four beats, in the proportions the preview build set: the pane comes across,
     // the icon's shape arrives behind it, the painting blooms up through the glass,
@@ -811,106 +787,13 @@
   (document.fonts?.ready ?? Promise.resolve()).then(() => {
     measure();
     frame();
-    fitFaces();
+    arriveByAddress();
   });
 
-  /* ---- The faces, and swiping between them ------------------------------------ */
-
-  // The original leads, so a swipe can always bring the mark itself back.
-  const FACES = [
-    { family: '"EB Garamond", Garamond, "Adobe Garamond Pro", "Hoefler Text", serif', squeeze: 0.8 },
-    { family: '"Birthstone", cursive' },
-    { family: '"Nanum Gothic", sans-serif' },
-    { family: '"Audiowide", sans-serif' },
-    { family: '"Hurricane", cursive' },
-    { family: '"Explora", cursive' },
-    { family: '"Qahiri", sans-serif' },
-    { family: '"Barrio", cursive' },
-    { family: '"Rock Salt", cursive' },
-    /* Last in the list is one place to the left of the first, because the loop wraps:
-       swipe right from the mark and this is what comes round. The only slot that is
-       not the mark in another face — a different word, in a hand, and the only one
-       that goes anywhere. */
-    { family: '"Rock Salt", cursive', word: 'notes', href: 'notes.html' }
-  ];
-
-  let face = 0;
-  let swapping = false;
   let parked = false;      // true once the mark has finished its climb
-  /* The pill's height, taken once when the mark first arrives and then held. A script
-     face with long ascenders asks for half again the line box of a plain one, and a
-     box that breathes each time you swipe reads as the box being unsure of itself.
-     Fixed, the faces change inside something that does not move. The width needs no
-     such bookkeeping — the floor in the stylesheet is the same for every face, and
-     every face fits inside it. */
+  /* The pill's height, taken once when the mark first arrives and then held, so the
+     box the slab measures itself against is one that does not move. */
   let boxHeight = null;
-  /* How much room the broadest face needs once every face stands at the same height.
-     The box is floored at this rather than at the original mark, so no face has to
-     shrink to fit and the box still never changes. */
-  let widestInk = 0;
-
-  function applyFace(i) {
-    const f = FACES[i];
-    root.style.setProperty('--face', f.family);
-    root.style.setProperty('--squeeze', f.squeeze ?? 1);
-    root.style.setProperty('--face-scale', f.scale ?? 1);
-    ink.textContent = f.word ?? 'MALIK';
-
-    // The pill is only reachable, and only announced, on the slot that leads
-    // somewhere. Off the tab order otherwise, so nothing invisible can be tabbed to.
-    const linked = !!f.href;
-    plate.classList.toggle('linked', linked);
-    tolink.tabIndex = linked ? 0 : -1;
-    tolink.setAttribute('aria-hidden', linked ? 'false' : 'true');
-    tolink.setAttribute('aria-label', linked ? (f.word ?? 'notes') : '');
-
-    measure();
-
-    // Only ever pinned once the mark is parked, and never before: pinning it at load
-    // would record the height of the whole phrase, and a jump straight to the top
-    // rather than a scroll never passes through the state that would let it go again.
-    if (!parked) { plate.style.height = ''; return; }
-    plate.style.height = `${boxHeight}px`;
-  }
-
-  /* One swipe moves one face, however hard it was thrown. A trackpad flick sends a
-     long tail of events and a phone fling sends one; both have to count once. The
-     lock is taken on the first event of a gesture and only released once the gesture
-     has been quiet for a moment, so the tail is spent against a closed door. */
-  let pendingStep = 0;
-  function step(direction) {
-    if (!parked || active !== HOME) return;
-    // Thrown while the last one is still landing: kept, and taken the moment it has.
-    // Dropped, it read as a swipe that did nothing.
-    if (swapping) { pendingStep = direction; return; }
-    swapping = true;
-
-    const away = `translateX(${-direction * 0.4}em)`;
-    const from = `translateX(${direction * 0.4}em)`;
-
-    ink.style.transition = 'transform 0.16s ease-in, opacity 0.16s ease-in';
-    ink.style.transform = away;
-    ink.style.opacity = '0';
-
-    setTimeout(() => {
-      face = (face + direction + FACES.length) % FACES.length;
-      // Swapped while it cannot be seen, so the change of face is never caught in the
-      // act — only its arrival is.
-      applyFace(face);
-
-      ink.style.transition = 'none';
-      ink.style.transform = from;
-      void ink.offsetWidth;                 // makes the jump take effect before the ride back
-      ink.style.transition = 'transform 0.28s cubic-bezier(0.2, 0.7, 0.3, 1), opacity 0.28s ease-out';
-      ink.style.transform = 'translateX(0)';
-      ink.style.opacity = '1';
-
-      setTimeout(() => {
-        swapping = false;
-        if (pendingStep) { const d = pendingStep; pendingStep = 0; step(d); }
-      }, 290);
-    }, 170);
-  }
 
   /* Trackpad and mouse wheel.
 
@@ -978,68 +861,8 @@
   // Arrow keys, so this is reachable without a trackpad.
   addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-    const dir = e.key === 'ArrowRight' ? 1 : -1;
-    // With a page focused, or the slab already away from the mark, the arrows move
-    // the slab; otherwise they turn the faces, as they always have.
-    const onPage = pages.includes(document.activeElement);
-    if (onPage || active !== HOME) { setActive(active + dir); return; }
-    step(dir);
+    setActive(active + (e.key === 'ArrowRight' ? 1 : -1));
   });
-
-  /* Each face is measured once it has actually loaded and scaled towards the width of
-     the original, so the pill stays about one size instead of stretching for the wide
-     faces and shrinking for the narrow ones. Measured rather than tabulated: the
-     numbers would otherwise be nine guesses that only hold for the fonts as they are
-     today. */
-  async function fitFaces() {
-    /* Measured as ink, not as line boxes.
-    
-       A font's line box is mostly air above and below the letters, and how much air
-       differs wildly between a text face and a brush script — so matching line boxes
-       made the scripts sit tiny inside a box sized for their empty space. Canvas
-       reports where the paint actually starts and stops, which is the only measure
-       that answers the question being asked: does this look the same size as the
-       other one. */
-    const ctx = gauge;
-    const PROBE = 100;   // the size everything is measured at, before being scaled
-
-    const box = [];
-    for (const f of FACES) {
-      try { await document.fonts.load(`${PROBE}px ${f.family.split(',')[0]}`); } catch {}
-      ctx.font = `${PROBE}px ${f.family}`;
-      try { ctx.letterSpacing = '0.044em'; } catch {}
-      const m = ctx.measureText(f.word ?? 'MALIK');
-      box.push({
-        w: (m.actualBoundingBoxRight + m.actualBoundingBoxLeft) * (f.squeeze ?? 1),
-        h: m.actualBoundingBoxAscent + m.actualBoundingBoxDescent
-      });
-    }
-
-    /* Height alone decides the scale, because height is what the eye compares when it
-       asks whether two words are the same size.
-    
-       Width used to cap it as well, which quietly undid the whole exercise: the box
-       had been cut to fit the original, so a broader face reached the ends of it and
-       was shrunk — Audiowide and Hurricane ended up a fifth shorter than the rest for
-       no reason the eye could see. The answer is to size the box for the broadest
-       face rather than the first one, and let every face stand at full height inside
-       a box that still never moves. */
-    const target = box[0];
-    FACES.forEach((f, i) => {
-      f.scale = Math.min(Math.max(target.h / (box[i].h || 1), 0.4), 2.6);
-    });
-
-    // The room the broadest of them needs, once every face stands at the same height.
-    // Held as a fraction of the probe's size rather than as pixels, because the mark
-    // is not drawn at the size it was measured at — the window decides that.
-    widestInk = Math.max(...FACES.map((f, i) => box[i].w * f.scale)) / PROBE * 1.03;
-    root.style.setProperty('--floor', widestInk.toFixed(4));
-    applyFace(face);
-    // The floor changes how wide the pill is, and how wide it is decides how tall it
-    // is and so how far it has to climb. Measured again now rather than left until
-    // the next scroll event, which on a page opened part way down may never come.
-    frame();
-  }
 
   /* ---- Moving the slab along the bar ---------------------------------------------- */
 
@@ -1054,12 +877,39 @@
      the way it came rather than being left behind on a page it does not belong to. */
   const PREVIEW = 3;
   let active = HOME;
+  /* True while the reveal is the thing on the page: from the preview page being
+     chosen until the scroll back out of it has finished. */
+  let revealing = false;
+  const scroller = document.querySelector('.scroller');
 
   function scrollToReveal(there) {
     const vh = innerHeight;
     const room = Math.max((document.documentElement.scrollHeight - vh) - vh * 0.9, 1);
     const top = there ? vh * 0.9 + room * 0.85 : vh * 0.9 + 1;
     scrollTo({ top, behavior: 'smooth' });
+  }
+
+  /* Going to the preview: the page is given its depth first, so there is somewhere
+     to scroll to, and then scrolled there. */
+  function enterReveal() {
+    revealing = true;
+    scroller.classList.add('deep');
+    void scroller.offsetHeight;    // the new depth has to exist before it is measured
+    scrollToReveal(true);
+  }
+  /* Leaving it, in two parts: the scroll back begins at once, and the depth is only
+     taken away once it has arrived — taking it away first would snap the scroll to
+     the top of the reveal with no journey. frame() calls the second half. */
+  function leaveReveal() {
+    revealing = false;
+    scroller.classList.remove('deep');
+  }
+
+  /* Each page has a name in the address, so a page can be arrived at directly — from
+     the notes site's menu, or from a link — and reloading lands where you were. */
+  const SLUGS = ['one', 'notes', '', 'preview', 'five'];
+  function noteAddress(i) {
+    history.replaceState(null, '', SLUGS[i] ? `#${SLUGS[i]}` : location.pathname);
   }
 
   /* Where the slab is put is measured, not laid out: a page's box, in pixels, relative
@@ -1105,8 +955,9 @@
     active = i;
     placeBox(ORDER[i]);
     setOpen(false);
-    if (i === PREVIEW) scrollToReveal(true);
-    else if (was === PREVIEW) scrollToReveal(false);
+    noteAddress(i);
+    if (i === PREVIEW) enterReveal();
+    else if (was === PREVIEW) scrollToReveal(false);   // frame() finishes the leaving
   }
 
   /* Back to the mark, and the easing off again: from here the slab is the pill's
@@ -1115,6 +966,19 @@
     active = HOME;
     plate.classList.remove('gliding');
     placeBox(plate);
+    if (revealing) leaveReveal();
+    noteAddress(HOME);
+  }
+
+  /* Opened at a page's address: straight to the top of the bar, no climb, and the
+     slab already on that page. Done once the fonts are in, because the bar cannot be
+     measured before the mark can. */
+  function arriveByAddress() {
+    const i = SLUGS.indexOf(location.hash.slice(1));
+    if (i < 0 || i === HOME) return;    // no address, or the mark's own: the climb as usual
+    scrollTo(0, innerHeight * 0.9 + 1);
+    frame();
+    setActive(i);
   }
 
   /* Was this gesture aimed at the bar, and if so at which part of it? The pill only
@@ -1132,18 +996,15 @@
     const b = bar.getBoundingClientRect();
     return x >= b.left && x <= b.right && y >= b.top - 36 && y <= b.bottom + 36;
   }
-  function onPill(x, y) { return active === HOME && inside(x, y, plate); }
 
-  /* One sideways swipe, decided once. On the pill with the slab at home, the faces
-     turn. Anywhere on the bar otherwise, the slab moves — and once the slab has
-     left the mark there is nothing else a sideways swipe could mean, so from
-     anywhere at all it moves the slab, following the finger. */
+  /* One sideways swipe means one thing now: the slab moves along the bar, following
+     the finger. Not before the mark has climbed — there is no bar yet to move it
+     along — and not from the reveal's own ground, where a sideways swipe is more
+     likely a hand steadying itself than a change of page. */
   function sideways(x, y, toward) {
-    if (parked && (active !== HOME || (onBar(x, y) && !onPill(x, y)))) {
-      setActive(active + toward);
-      return;
-    }
-    step(-toward);
+    if (!parked) return;
+    if (active === PREVIEW && !onBar(x, y)) return;
+    setActive(active + toward);
   }
 
   // A tap on a page sends the slab to it. None of them is a link: each is a place on
@@ -1175,10 +1036,6 @@
     logo.setAttribute('aria-expanded', opened ? 'true' : 'false');
     sheet.setAttribute('aria-hidden', opened ? 'false' : 'true');
   }
-
-  // A gesture that lifts off over the pill arrives as a click as well; on the linked
-  // slot that would be a navigation nobody asked for.
-  tolink.addEventListener('click', (e) => { if (swiped) e.preventDefault(); });
 
   logo.addEventListener('click', () => {
     if (swiped) return;          // that was a swipe going past, not a tap
