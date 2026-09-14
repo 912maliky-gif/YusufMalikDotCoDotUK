@@ -40,6 +40,9 @@
   @property --collapse{ syntax: '<number>'; inherits: true; initial-value: 0; }
   @property --raised  { syntax: '<number>'; inherits: true; initial-value: 0; }
   @property --lift    { syntax: '<number>'; inherits: true; initial-value: 0; }
+  /* The colour coming up through the painting, in the saturate arrival. Its own
+     reading rather than --bloom's, because it is timed to the square's growth. */
+  @property --tint    { syntax: '<number>'; inherits: true; initial-value: 0; }
   /* The reveal's own readings. --arrive and --overshoot are two easings of the one
      arrival: everything lands on the first, and only the sideways travel rides the
      second, which carries the pane a hair past its mark and lets it settle back. */
@@ -468,7 +471,7 @@
      dark one; the brightness settles as the colour arrives. */
   [data-ground="saturate"] .ground {
     opacity: 1;
-    filter: saturate(var(--bloom)) brightness(calc(1 + 0.10 * (1 - var(--bloom))));
+    filter: saturate(var(--tint)) brightness(calc(1 + 0.10 * (1 - var(--tint))));
   }
   /* "bloom": the way it was. The square arrives as a plain plate — the file's own
      base fill — and the painting fades in over it. */
@@ -771,7 +774,16 @@
     // Its ink is in long before its travel is, or it would be seen arriving from off
     // the edge of the window rather than simply being there, coming.
     root.style.setProperty('--arrive-o', clamp01(q / 0.058).toFixed(4));
-    root.style.setProperty('--body', outCubic(clamp01((q - 0.558) / 0.233)).toFixed(4));
+    const grow = clamp01((q - 0.558) / 0.233);
+    root.style.setProperty('--body', outCubic(grow).toFixed(4));
+    // The colour rides the growth: four fifths of it comes up while the square is
+    // still expanding, on the same easing, and the last fifth once it has stopped —
+    // so the square is nearly itself as it arrives, and finishes becoming itself
+    // once it is still.
+    const tint = grow < 1
+      ? 0.8 * outCubic(grow)
+      : 0.8 + 0.2 * outCubic(clamp01((q - 0.791) / 0.16));
+    root.style.setProperty('--tint', tint.toFixed(4));
     const bloom = outCubic(clamp01((q - 0.698) / 0.302));
     root.style.setProperty('--bloom', bloom.toFixed(4));
 
