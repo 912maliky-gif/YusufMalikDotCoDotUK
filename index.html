@@ -209,10 +209,74 @@
        size, measured from the faces once they have loaded; the padding is added back
        because the box is border-box. */
     min-width: calc(var(--floor, 0) * 1em + var(--pad-x) * 2);
+    /* A stacking context of its own, so the slab can sit behind the letters at a
+       z-index below zero without falling behind the page. */
+    z-index: 1;
+  }
+
+  /* The bar the mark becomes part of. It is the mark alone in the middle of the
+     window to begin with, and by the time it has risen there are pages either side
+     of it — the same climb, with company arriving on the way up.
+
+     Three columns, the outer two equal, so the mark stays on the centre line of the
+     window however unlike each other the two sides are: two short words on the left
+     and one long one on the right would otherwise drag it off centre. */
+  .bar {
+    position: relative;
+    display: grid;
+    /* minmax(0, …) rather than a bare 1fr: a bare fraction refuses to shrink below
+       what is in it, so on a narrow window the fuller side would win and drag the
+       mark off centre. Held at zero, the two sides stay equal whatever they hold. */
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    width: 100%;
     /* Rises from the middle of the window to rest near the top. It keeps its size and
        its shape the whole way — the slab is the bar, not something that turns into
        one. The distance depends on how tall it is, so it is measured, not assumed. */
     transform: translateY(calc(var(--rise, 0px) * var(--lift)));
+  }
+  .pages {
+    display: flex;
+    align-items: center;
+    gap: 0.35em;
+    font-size: var(--big);
+  }
+  .pages.left  { justify-self: end;   margin-right: 0.55em; }
+  .pages.right { justify-self: start; margin-left: 0.55em; }
+
+  /* The other pages. The same face as the mark and set the same way — the weight,
+     the tracking, the squeeze — so they are plainly the mark's family, and about
+     half its size so it is plainly the head of it. Each is padded like the pill,
+     because each is a place the pill can go: the slab, when it arrives, fits the
+     room exactly.
+
+     They come in with the climb: nothing but the mark in the middle of the window,
+     and pages either side of it by the time it reaches the top. Above the slab, so
+     it slides underneath them rather than over. */
+  .page {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+    display: inline-block;
+    padding: 0.52em 1.15em;
+    font-family: "EB Garamond", Garamond, "Adobe Garamond Pro", "Hoefler Text", serif;
+    font-size: 0.5em;
+    font-weight: 400;
+    letter-spacing: 0.044em;
+    line-height: 1;
+    color: var(--mark);
+    text-decoration: none;
+    white-space: nowrap;
+    transform: scaleX(0.8);
+    opacity: var(--lift);
+  }
+  /* Five things across a phone. The pages give up size before the mark does, and
+     the slack between them goes first. */
+  @media (max-width: 520px) {
+    .page { font-size: 0.4em; padding: 0.5em 0.45em; }
+    .pages { gap: 0.05em; }
+    .pages.left  { margin-right: 0.25em; }
+    .pages.right { margin-left: 0.25em; }
   }
 
   /* The slab itself, behind the letters. A pseudo-element so it can fade and grow
@@ -224,10 +288,17 @@
      visual weight ended up about ten pixels right of the name — which is what made a
      name measuring dead centre look as though it had slipped left. Straight down, the
      two sides cannot disagree. */
-  .plate::before {
-    content: '';
+  .box {
     position: absolute;
-    inset: 0;
+    /* At home it is the exact size of the pill, given as a fraction so it follows the
+       pill closing as you scroll with nothing needing to be told. When it goes to
+       another page the script gives it that page's size and place in pixels instead,
+       and these four are what it glides between. */
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
     border-radius: 0.62em;
     background: linear-gradient(180deg, var(--plate-lit), var(--plate));
     box-shadow:
@@ -235,6 +306,17 @@
       0 calc(-0.14em * var(--raised)) calc(0.45em * var(--raised)) var(--shadow-lit);
     opacity: var(--raised);
     transform: scale(calc(0.94 + 0.06 * var(--raised)));
+  }
+  /* Only ever eased while it is going somewhere. While the page is being scrolled the
+     slab is tracking the pill frame by frame, and an easing on that would have it
+     arrive a beat after the letters every time. */
+  .plate.gliding .box {
+    transition:
+      left   0.55s cubic-bezier(0.2, 0.7, 0.3, 1),
+      top    0.55s cubic-bezier(0.2, 0.7, 0.3, 1),
+      width  0.55s cubic-bezier(0.2, 0.7, 0.3, 1),
+      height 0.55s cubic-bezier(0.2, 0.7, 0.3, 1),
+      border-radius 0.55s cubic-bezier(0.2, 0.7, 0.3, 1);
   }
 
   .wordmark {
@@ -504,11 +586,22 @@
 <body>
   <div class="scroller">
     <div class="stage">
-      <div class="plate">
+      <div class="bar">
+        <nav class="pages left" aria-label="Pages">
+          <span class="page">X</span>
+          <a class="page" href="notes.html">Notes</a>
+        </nav>
+        <div class="plate">
+        <span class="box" aria-hidden="true"></span>
         <p class="wordmark">
           <span class="article">a</span><span class="name"><span class="ink">MALIK</span><span class="baseline"></span></span><span class="noun">product</span>
         </p>
         <a class="tolink" href="notes.html" tabindex="-1" aria-hidden="true"></a>
+        </div>
+        <nav class="pages right" aria-label="Pages">
+          <span class="page">X</span>
+          <span class="page">X</span>
+        </nav>
       </div>
       <button class="logo" type="button" aria-expanded="false" aria-controls="sheet" disabled>
         <span class="icon"><img class="ground" src="logo-ground.jpg" alt="" decoding="async"></span>
@@ -526,6 +619,8 @@
   const root = document.documentElement;
   const ink = document.querySelector('.ink');
   const tolink = document.querySelector('.tolink');
+  const bar = document.querySelector('.bar');
+  const box = document.querySelector('.box');
   const stage = document.querySelector('.stage');
   const plate = document.querySelector('.plate');
   const wordmark = document.querySelector('.wordmark');
@@ -678,6 +773,10 @@
       // a face swap is let go of again. The width asks for none of this: its floor is
       // in the stylesheet and holds the whole way up.
       if (plate.style.height) plate.style.height = '';
+      // And the slab comes home. Wherever it had been sent along the bar, the bar is
+      // coming apart on the way back up, and a slab left over a page that is fading
+      // out would be a slab around nothing.
+      if (wasParked) settle();
     } else if (!wasParked) {
       // The moment it arrives, the height it has arrived at is the height it keeps.
       boxHeight = boxHeight ?? plate.offsetHeight;
@@ -769,7 +868,7 @@
      lock is taken on the first event of a gesture and only released once the gesture
      has been quiet for a moment, so the tail is spent against a closed door. */
   function step(direction) {
-    if (swapping || !parked) return;
+    if (swapping || !parked || active !== HOME) return;
     swapping = true;
 
     const away = `translateX(${-direction * 0.4}em)`;
@@ -811,15 +910,25 @@
     wheelIdle = setTimeout(() => { wheelHeld = false; }, 220);
     if (wheelHeld) return;
     wheelHeld = true;
+    // On the bar but not on the pill, the slab is what moves — and it follows the
+    // finger: swipe left, it goes left. On the pill, the faces turn as before.
+    if (onBar(e.clientX, e.clientY) && !onPill(e.clientX, e.clientY)) {
+      setActive(active + (e.deltaX > 0 ? -1 : 1));
+      return;
+    }
     step(e.deltaX > 0 ? 1 : -1);
     // Not passive, because a passive listener is forbidden from refusing the gesture.
   }, { passive: false });
 
   // Touch: one swipe, one face, by definition of the gesture.
-  let touchX = null, touchY = null;
+  let touchX = null, touchY = null, touchOnBar = false, touchOnPill = false;
   addEventListener('touchstart', (e) => {
     touchX = e.touches[0].clientX;
     touchY = e.touches[0].clientY;
+    // Settled where the finger lands, not where it lifts — the slab may well have
+    // moved out from under it by then.
+    touchOnBar = onBar(touchX, touchY);
+    touchOnPill = onPill(touchX, touchY);
   }, { passive: true });
   addEventListener('touchend', (e) => {
     if (touchX === null) return;
@@ -832,13 +941,19 @@
     swiped = true;
     clearTimeout(swipeIdle);
     swipeIdle = setTimeout(() => { swiped = false; }, 400);
+    if (touchOnBar && !touchOnPill) { setActive(active + (dx < 0 ? -1 : 1)); return; }
     step(dx < 0 ? 1 : -1);
   }, { passive: true });
 
   // Arrow keys, so this is reachable without a trackpad.
   addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-    step(e.key === 'ArrowRight' ? 1 : -1);
+    const dir = e.key === 'ArrowRight' ? 1 : -1;
+    // With a page focused, or the slab already away from the mark, the arrows move
+    // the slab; otherwise they turn the faces, as they always have.
+    const onPage = pages.includes(document.activeElement);
+    if (onPage || active !== HOME) { setActive(active + dir); return; }
+    step(dir);
   });
 
   /* Each face is measured once it has actually loaded and scaled towards the width of
@@ -896,6 +1011,88 @@
     frame();
   }
 
+  /* ---- Moving the slab along the bar ---------------------------------------------- */
+
+  /* Left to right as they stand on the bar, the mark in the middle. HOME is the mark:
+     where the slab starts, and where it goes back to. */
+  const pages = [...document.querySelectorAll('.page')];
+  const ORDER = [pages[0], pages[1], plate, pages[2], pages[3]];
+  const HOME = 2;
+  let active = HOME;
+
+  /* Where the slab is put is measured, not laid out: a page's box, in pixels, relative
+     to the pill the slab lives inside. At home the four sides are given as fractions
+     instead, which is what lets the slab follow the pill closing during the scroll
+     without a script touching it every frame. */
+  function placeBox(target) {
+    if (target === plate) {
+      box.style.left = box.style.top = '0px';
+      box.style.width = box.style.height = '100%';
+      box.style.borderRadius = '';
+      return;
+    }
+    const home = plate.getBoundingClientRect();
+    const to = target.getBoundingClientRect();
+    box.style.left = `${to.left - home.left}px`;
+    box.style.top = `${to.top - home.top}px`;
+    box.style.width = `${to.width}px`;
+    box.style.height = `${to.height}px`;
+    // The corners are drawn at the size of whatever the slab is around.
+    box.style.borderRadius = `${0.62 * parseFloat(getComputedStyle(target).fontSize)}px`;
+  }
+
+  /* A fraction cannot be eased into a pixel, so the moment before the slab is asked
+     to travel, its home is restated in pixels — the same place, said the other way —
+     and from there every move is pixels to pixels. */
+  function pinHome() {
+    const r = plate.getBoundingClientRect();
+    box.style.left = box.style.top = '0px';
+    box.style.width = `${r.width}px`;
+    box.style.height = `${r.height}px`;
+  }
+
+  function setActive(i) {
+    i = Math.max(0, Math.min(ORDER.length - 1, i));
+    if (i === active || !parked) return;
+    if (active === HOME) {
+      pinHome();
+      void box.offsetWidth;     // makes the restatement land before the easing starts
+      plate.classList.add('gliding');
+    }
+    active = i;
+    placeBox(ORDER[i]);
+    setOpen(false);
+  }
+
+  /* Back to the mark, and the easing off again: from here the slab is the pill's
+     shadow and nothing else. */
+  function settle() {
+    active = HOME;
+    plate.classList.remove('gliding');
+    placeBox(plate);
+  }
+
+  /* Was this gesture aimed at the bar, and if so at which part of it? The pill only
+     answers for itself while the slab is on it — once the slab has gone elsewhere,
+     a swipe on the mark is a swipe on the bar like any other. */
+  function inside(x, y, el) {
+    const b = el.getBoundingClientRect();
+    return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
+  }
+  function onBar(x, y) { return parked && inside(x, y, bar); }
+  function onPill(x, y) { return active === HOME && inside(x, y, plate); }
+
+  // A tap on one of the pages sends the slab to it. The one that is a link goes
+  // where it goes; the placeholders have nowhere to go yet, so the slab is all that
+  // happens.
+  pages.forEach((el, k) => {
+    el.addEventListener('click', (e) => {
+      if (swiped) { e.preventDefault(); return; }
+      if (el.tagName === 'A') return;
+      setActive(ORDER.indexOf(el));
+    });
+  });
+
   /* ---- Opening the icon -------------------------------------------------------- */
 
   let ready = false;
@@ -935,6 +1132,15 @@
     parked = false;
     measure();
     frame();
+    // A slab away from home is sitting at a pixel position measured for a window
+    // that no longer exists. Put it where its page now is — without the easing, since
+    // nothing moved that anyone saw move.
+    if (active !== HOME) {
+      plate.classList.remove('gliding');
+      placeBox(ORDER[active]);
+      void box.offsetWidth;
+      plate.classList.add('gliding');
+    }
   });
 </script>
 <!-- Counting, in the lightest form that still answers the question: how many people
