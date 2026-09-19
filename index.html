@@ -537,8 +537,7 @@
   }
 
   .sheet-name,
-  .sheet-store,
-  .sheet-note {
+  .sheet-store {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
   }
   .sheet-name {
@@ -547,10 +546,9 @@
     letter-spacing: -0.012em;
     color: var(--mark);
   }
-  /* The shape of the App Store's button, and deliberately not the thing itself: no
-     href, no press, and not a control of any kind — there is nowhere for it to go
-     yet. Saying so underneath is better than a button that looks live and does
-     nothing when you press it. */
+  /* The App Store's button, and now the thing itself: it was the shape of one for
+     as long as there was nowhere for it to go, with a line underneath saying so.
+     The app is on the store, so the line has gone and the button is a link. */
   .sheet-store {
     display: inline-block;
     margin-top: 18px;
@@ -560,12 +558,10 @@
     color: #ffffff;
     font-size: 15px;
     font-weight: 500;
+    text-decoration: none;
+    transition: background 0.18s ease-out;
   }
-  .sheet-note {
-    margin-top: 11px;
-    font-size: 13px;
-    color: var(--muted);
-  }
+  .sheet-store:hover { background: #0077ed; }
 
   /* Side by side needs somewhere to put them. Under about 700px there isn't, so the
      icon steps up instead of aside and the sheet comes out beneath it. */
@@ -631,8 +627,7 @@
       </button>
       <div class="sheet" id="sheet" aria-hidden="true">
         <p class="sheet-name">Yusuf&rsquo;s Preview</p>
-        <p class="sheet-store">View in App Store</p>
-        <p class="sheet-note">Not on the App Store yet.</p>
+        <a class="sheet-store" href="https://apps.apple.com/gb/app/yusufs-preview/id6807042692">View in App Store</a>
       </div>
     </div>
   </div>
