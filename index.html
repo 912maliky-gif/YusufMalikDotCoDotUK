@@ -618,7 +618,7 @@
         </div>
         <nav class="pages right" aria-label="Pages">
           <span class="page">Yusuf&rsquo;s Preview</span>
-          <span class="page">X</span>
+          <a class="page" href="bot.html">Bot</a>
         </nav>
       </div>
       <button class="logo" type="button" aria-expanded="false" aria-controls="sheet" disabled>
@@ -1102,7 +1102,7 @@
   pages.forEach((el) => {
     el.addEventListener('click', (e) => {
       if (swiped) { e.preventDefault(); return; }   // a swipe lifting off, not a tap
-      if (el.tagName === 'A') return;               // Notes: a tap goes to the notes site
+      if (el.tagName === 'A') return;               // Notes and Bot: a tap goes to their own pages
       setActive(ORDER.indexOf(el));
     });
   });
