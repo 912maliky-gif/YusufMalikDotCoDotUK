@@ -60,6 +60,7 @@
   .tablewrap { overflow-x: auto; }
   details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 8px; }
   [hidden] { display: none !important; }
+  .vh { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; opacity: 0; }
   .gate { min-height: 70vh; display: grid; place-items: center; padding: 24px 16px; }
   .gatecard { width: min(360px, 100%); display: grid; gap: 10px; }
   .gatecard input[type=password] { font: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
@@ -153,8 +154,12 @@
   })();
 </script>
 <div class="gate" id="gate" hidden>
-  <form class="card gatecard" id="gateForm">
+  <!-- A real GET form, so Safari offers to save the password to Keychain. None of the fields
+       has a name, so submitting it just reloads this page with nothing in the address. The
+       username is hidden: it only gives Keychain something to file the password under. -->
+  <form class="card gatecard" id="gateForm" method="get">
     <h2 style="font-size:16px;margin:0">Private dashboard</h2>
+    <input class="vh" type="text" autocomplete="username" value="Yusuf" tabindex="-1" aria-hidden="true">
     <input id="pw" type="password" autocomplete="current-password" placeholder="Password" required>
     <button type="submit" id="unlockBtn">Unlock</button>
   </form>
@@ -371,10 +376,9 @@ function store(get, value) {
   catch { return null; }
 }
 
-async function unlock(pw, remember) {
+async function unlock(pw) {
   const s = await fetchState(pw);   // throws on a wrong password: AES-GCM refuses to decrypt
   password = pw;
-  if (remember) store(false, pw);
   $("gate").hidden = true;
   $("main").hidden = false;
   render(s); markStale(s);
@@ -390,20 +394,32 @@ if (!REMOTE) {
   $("main").hidden = true;
   const showGate = () => { $("gate").hidden = false; $("pw").focus(); };
   const saved = store(true);
-  if (saved) unlock(saved, false).catch(() => { store(false, null); showGate(); });
+  if (saved) unlock(saved).catch(() => { store(false, null); showGate(); });
   else showGate();
   // No words on the box: a wrong password shakes the field red, and only a failed
   // download (not the password's fault) says anything, on the button itself.
+  let verified = false;
   $("pw").oninput = () => $("pw").classList.remove("wrong");
   $("gateForm").onsubmit = async e => {
+    if (verified) return;   // the second, real submission: let it through so Keychain sees it
     e.preventDefault();
     $("unlockBtn").textContent = "Unlock";
-    try { await unlock($("pw").value, true); }
+    const pw = $("pw").value;
+    try { await fetchState(pw); }
     catch (err) {
       if (err && err.name === "OperationError") {
         $("pw").classList.remove("wrong"); void $("pw").offsetWidth; $("pw").classList.add("wrong");
       } else $("unlockBtn").textContent = "Couldn't load, try again";
+      return;
     }
+    // Right password. Remember it on this device, then submit the form for real: that is what
+    // makes Safari offer to save it to Keychain, and the reload unlocks from the remembered copy.
+    // If this browser won't remember anything (private browsing), just unlock in place instead.
+    store(false, pw);
+    if (store(true) !== pw) return unlock(pw);
+    verified = true;
+    const f = $("gateForm");
+    f.requestSubmit ? f.requestSubmit() : f.submit();
   };
 }
 </script>
