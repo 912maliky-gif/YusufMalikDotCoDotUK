@@ -64,7 +64,8 @@
   .gatecard { width: min(360px, 100%); display: grid; gap: 10px; }
   .gatecard input[type=password] { font: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
   .gatecard button { font: inherit; font-weight: 600; padding: 9px 11px; border-radius: 8px; border: 0; background: var(--text); color: var(--card); cursor: pointer; }
-  .gatecard label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  .gatecard input.wrong { border-color: var(--down); animation: shake .3s; }
+  @keyframes shake { 25% { translate: -6px; } 75% { translate: 6px; } }
   .linkbtn { font: inherit; font-size: 12px; background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; cursor: pointer; }
 </style>
 <meta name="robots" content="noindex">
@@ -121,7 +122,7 @@
   <a class="brand" href="index.html">Yusuf&rsquo;s Bot</a>
   <nav class="mark" aria-label="MALIK">
     <span class="mside l">
-      <a class="mpage" href="index.html#one">X</a>
+      <span class="mpage here" aria-current="page">Bot</span>
       <a class="mpage" href="notes.html">Notes</a>
     </span>
     <button class="mword" type="button" aria-expanded="false">
@@ -129,7 +130,7 @@
     </button>
     <span class="mside r">
       <a class="mpage" href="index.html#preview">Yusuf&rsquo;s Preview</a>
-      <span class="mpage here" aria-current="page">Bot</span>
+      <a class="mpage" href="index.html#five">X</a>
     </span>
   </nav>
 </div>
@@ -154,11 +155,8 @@
 <div class="gate" id="gate" hidden>
   <form class="card gatecard" id="gateForm">
     <h2 style="font-size:16px;margin:0">Private dashboard</h2>
-    <div class="muted">A paper-trading experiment. Enter the password to see it.</div>
     <input id="pw" type="password" autocomplete="current-password" placeholder="Password" required>
-    <label><input id="remember" type="checkbox" checked> Remember on this device</label>
-    <button type="submit">Unlock</button>
-    <div id="gateErr" class="down" style="font-size:13px"></div>
+    <button type="submit" id="unlockBtn">Unlock</button>
   </form>
 </div>
 <main id="main">
@@ -394,11 +392,18 @@ if (!REMOTE) {
   const saved = store(true);
   if (saved) unlock(saved, false).catch(() => { store(false, null); showGate(); });
   else showGate();
+  // No words on the box: a wrong password shakes the field red, and only a failed
+  // download (not the password's fault) says anything, on the button itself.
+  $("pw").oninput = () => $("pw").classList.remove("wrong");
   $("gateForm").onsubmit = async e => {
     e.preventDefault();
-    $("gateErr").textContent = "";
-    try { await unlock($("pw").value, $("remember").checked); }
-    catch (err) { $("gateErr").textContent = err && err.name === "OperationError" ? "Wrong password." : "Couldn't load the data. Try again in a minute."; }
+    $("unlockBtn").textContent = "Unlock";
+    try { await unlock($("pw").value, true); }
+    catch (err) {
+      if (err && err.name === "OperationError") {
+        $("pw").classList.remove("wrong"); void $("pw").offsetWidth; $("pw").classList.add("wrong");
+      } else $("unlockBtn").textContent = "Couldn't load, try again";
+    }
   };
 }
 </script>
