@@ -200,7 +200,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const COLORS = { "Buy & hold": "#9ca3af", "Trend 50-day": "#12b5cb", "Composite": "#e52592", "Composite + Claude": "#e8710a", "Aggressive 2x + Claude": "#7c3aed", "Jev": "#f9ab00" };
+const COLORS = { "Buy & hold": "#9ca3af", "Trend 50-day": "#12b5cb", "Composite": "#e52592", "Composite + Claude": "#e8710a", "Aggressive 2x + Claude": "#7c3aed", "Jev": "#f9ab00", "Trump copy": "#1d4ed8" };
 const gbp = (v, d = 2) => "£" + Number(v).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
 const sgn = v => (v >= 0 ? "+" : "−");
 const pct = v => sgn(v) + Math.abs(v * 100).toFixed(2) + "%";
@@ -230,11 +230,24 @@ function renderAccounts(s) {
       <div class="name">${esc(n)}</div>
       <div class="big">${gbp(a.value)}</div>
       <div class="num ${cls(pl)}">${sgn(pl)}${gbp(Math.abs(pl))} (${pct(pl / start)})</div>
+      ${a.kind === "stocks" ? stockLines(a, fees) : `
       <div class="bar"><div style="width:${Math.min(100, a.fraction / a.max_lev * 100).toFixed(0)}%"></div></div>
-      <div class="muted num">${(a.fraction * 100).toFixed(0)}% BTC${a.max_lev > 1 ? ` (${a.fraction.toFixed(2)}x of max ${a.max_lev}x)` : ""} · ${a.trades.length} trades · ${gbp(fees)} fees${a.funding_paid ? ` · ${gbp(a.funding_paid)} funding` : ""}</div>
+      <div class="muted num">${(a.fraction * 100).toFixed(0)}% BTC${a.max_lev > 1 ? ` (${a.fraction.toFixed(2)}x of max ${a.max_lev}x)` : ""} · ${a.trades.length} trades · ${gbp(fees)} fees${a.funding_paid ? ` · ${gbp(a.funding_paid)} funding` : ""}</div>`}
       <div class="muted" style="margin-top:4px">${esc(s.why[n] || "")}</div>
     </div>`;
   }).join("");
+}
+
+/* The Trump account holds US shares, not BTC: show how invested it is, how it compares with simply
+   buying the S&P 500 on the same day, and what it holds. */
+function stockLines(a, fees) {
+  const h = a.holdings || [];
+  const own = a.value / 1000 - 1;
+  return `<div class="bar"><div style="width:${(a.fraction * 100).toFixed(0)}%"></div></div>
+    <div class="muted num">${h.length} stocks · ${(a.fraction * 100).toFixed(0)}% invested · ${gbp(fees)} fees</div>
+    ${a.bench != null ? `<div class="muted num">S&amp;P 500 since start: <span class="${cls(a.bench)}">${pct(a.bench)}</span> · copy is <span class="${cls(own - a.bench)}">${(own - a.bench) >= 0 ? "ahead" : "behind"} by ${Math.abs((own - a.bench) * 100).toFixed(2)} pts</span></div>` : ""}
+    ${h.length ? `<details><summary>Holdings</summary><table style="font-size:12px">${h.map(x =>
+      `<tr><td><b>${esc(x.symbol)}</b></td><td class="muted" style="white-space:normal">${esc(x.name)}</td><td>${(x.weight * 100).toFixed(1)}%</td><td>${gbp(x.gbp)}</td></tr>`).join("")}</table></details>` : ""}`;
 }
 
 function renderResearch(s) {
@@ -327,8 +340,9 @@ function render(s) {
   const trades = Object.entries(s.accounts).flatMap(([n, a]) => a.trades.map(t => ({ ...t, acct: n }))).sort((a, b) => b.time - a.time);
   $("log").innerHTML = trades.length ? trades.map(t => `<tr>
     <td>${when(t.time)}</td><td><span style="color:${COLORS[t.acct]}">●</span> ${esc(t.acct)}</td>
-    <td class="${t.side === "BUY" ? "up" : "down"}">${t.side === "LIQUIDATED" ? "💥 LIQUIDATED" : t.side}</td><td>${t.from_pct}% → ${t.to_pct}%</td>
-    <td>${gbp(t.gbp)}</td><td>${gbp(t.price, 0)}</td><td>${gbp(t.fee)}</td><td class="wrap">${esc(t.reason)}</td></tr>`).join("")
+    <td class="${t.side === "SELL" || t.side === "LIQUIDATED" ? "down" : "up"}">${t.side === "LIQUIDATED" ? "💥 LIQUIDATED" : t.side}</td>
+    <td>${t.from_pct == null ? `${t.to_pct}% invested` : `${t.from_pct}% → ${t.to_pct}%`}</td>
+    <td>${gbp(t.gbp)}</td><td>${t.price == null ? "—" : gbp(t.price, 0)}</td><td>${gbp(t.fee)}</td><td class="wrap">${esc(t.reason)}</td></tr>`).join("")
     : `<tr><td colspan="8" class="muted">No trades yet.</td></tr>`;
 }
 
