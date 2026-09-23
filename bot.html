@@ -200,7 +200,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const COLORS = { "Buy & hold": "#9ca3af", "Trend 50-day": "#12b5cb", "Composite": "#e52592", "Composite + Claude": "#e8710a", "Aggressive 2x + Claude": "#7c3aed" };
+const COLORS = { "Buy & hold": "#9ca3af", "Trend 50-day": "#12b5cb", "Composite": "#e52592", "Composite + Claude": "#e8710a", "Aggressive 2x + Claude": "#7c3aed", "Jev": "#f9ab00" };
 const gbp = (v, d = 2) => "£" + Number(v).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
 const sgn = v => (v >= 0 ? "+" : "−");
 const pct = v => sgn(v) + Math.abs(v * 100).toFixed(2) + "%";
