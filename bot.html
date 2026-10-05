@@ -200,7 +200,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const COLORS = { "Buy & hold": "#9ca3af", "Trend 50-day": "#12b5cb", "Composite": "#e52592", "Composite + Claude": "#e8710a", "Aggressive 2x + Claude": "#7c3aed", "Jev": "#f9ab00", "Trump copy": "#1d4ed8", "HMM regime": "#65a30d" };
+const COLORS = { "Buy & hold": "#9ca3af", "Trend 50-day": "#12b5cb", "Composite": "#e52592", "Composite + Claude": "#e8710a", "Aggressive 2x + Claude": "#7c3aed", "Jev": "#f9ab00", "Trump copy": "#1d4ed8", "HMM regime": "#65a30d", "Commodity rules": "#b45309", "Claude commodity calls": "#0891b2" };
 const gbp = (v, d = 2) => "£" + Number(v).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
 const sgn = v => (v >= 0 ? "+" : "−");
 const pct = v => sgn(v) + Math.abs(v * 100).toFixed(2) + "%";
@@ -230,7 +230,7 @@ function renderAccounts(s) {
       <div class="name">${esc(n)}</div>
       <div class="big">${gbp(a.value)}</div>
       <div class="num ${cls(pl)}">${sgn(pl)}${gbp(Math.abs(pl))} (${pct(pl / start)})</div>
-      ${a.kind === "stocks" ? stockLines(a, fees) : `
+      ${a.kind === "futures" ? futuresLines(a, fees, n, s) : a.kind === "stocks" ? stockLines(a, fees) : `
       <div class="bar"><div style="width:${Math.min(100, a.fraction / a.max_lev * 100).toFixed(0)}%"></div></div>
       <div class="muted num">${(a.fraction * 100).toFixed(0)}% BTC${a.max_lev > 1 ? ` (${a.fraction.toFixed(2)}x of max ${a.max_lev}x)` : ""} · ${a.trades.length} trades · ${gbp(fees)} fees${a.funding_paid ? ` · ${gbp(a.funding_paid)} funding` : ""}</div>`}
       <div class="muted" style="margin-top:4px">${esc(s.why[n] || "")}</div>
@@ -248,6 +248,19 @@ function stockLines(a, fees) {
     ${a.bench != null ? `<div class="muted num">S&amp;P 500 since start: <span class="${cls(a.bench)}">${pct(a.bench)}</span> · copy is <span class="${cls(own - a.bench)}">${(own - a.bench) >= 0 ? "ahead" : "behind"} by ${Math.abs((own - a.bench) * 100).toFixed(2)} pts</span></div>` : ""}
     ${h.length ? `<details><summary>Holdings</summary><table style="font-size:12px">${h.map(x =>
       `<tr><td><b>${esc(x.symbol)}</b></td><td class="muted" style="white-space:normal">${esc(x.name)}</td><td>${(x.weight * 100).toFixed(1)}%</td><td>${gbp(x.gbp)}</td></tr>`).join("")}</table></details>` : ""}`;
+}
+
+/* Commodity accounts hold long AND short positions: show gross exposure, each position, and for
+   Claude's account how its calls score against simple benchmarks (lower Brier is better). */
+function futuresLines(a, fees, n, s) {
+  const pos = (a.positions || []).filter(p => Math.abs(p.weight) > 0.005 || (p.pending && Math.abs(p.pending) > 0.005));
+  const sc = s.commodity && s.commodity.score;
+  const score = n.startsWith("Claude") && sc && sc.calls
+    ? `<div class="muted num">Brier ${sc.claude.toFixed(3)} vs trend ${sc.trend.toFixed(3)} · base rate ${sc.base_rate.toFixed(3)} · 50/50 ${sc.coin_flip.toFixed(3)} (${sc.weeks} wk${sc.weeks === 1 ? "" : "s"}, lower is better)</div>` : "";
+  return `<div class="bar"><div style="width:${Math.min(100, a.fraction / 2 * 100).toFixed(0)}%"></div></div>
+    <div class="muted num">${a.fraction.toFixed(2)}x gross of max 2x · ${a.trades.length} rebalances · ${gbp(fees)} costs</div>${score}
+    ${pos.length ? `<details><summary>Positions</summary><table style="font-size:12px">${pos.map(p =>
+      `<tr><td><b>${esc(p.symbol)}</b></td><td class="muted">${esc(p.name)}</td><td class="${cls(p.weight)}">${p.weight >= 0 ? "long" : "short"} ${(Math.abs(p.weight) * 100).toFixed(0)}%</td>${p.pending != null ? `<td class="muted">→ ${(p.pending * 100).toFixed(0)}%</td>` : ""}</tr>`).join("")}</table></details>` : ""}`;
 }
 
 function renderResearch(s) {
