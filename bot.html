@@ -200,7 +200,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const COLORS = { "Buy & hold": "#9ca3af", "Trend 50-day": "#12b5cb", "Composite": "#e52592", "Composite + Claude": "#e8710a", "Aggressive 2x + Claude": "#7c3aed", "Jev": "#f9ab00", "Trump copy": "#1d4ed8", "HMM regime": "#65a30d", "Commodity rules": "#b45309", "Claude commodity calls": "#0891b2" };
+const COLORS = { "Buy & hold": "#9ca3af", "Trend 50-day": "#12b5cb", "Composite": "#e52592", "Composite + Claude": "#e8710a", "Aggressive 2x + Claude": "#7c3aed", "Jev": "#f9ab00", "Trump copy": "#1d4ed8", "HMM regime": "#65a30d", "Commodity rules": "#b45309", "Claude commodity calls": "#0891b2", "MU puts (rules)": "#9333ea", "MU short (Claude)": "#dc2626" };
 const gbp = (v, d = 2) => "£" + Number(v).toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
 const sgn = v => (v >= 0 ? "+" : "−");
 const pct = v => sgn(v) + Math.abs(v * 100).toFixed(2) + "%";
@@ -230,7 +230,7 @@ function renderAccounts(s) {
       <div class="name">${esc(n)}</div>
       <div class="big">${gbp(a.value)}</div>
       <div class="num ${cls(pl)}">${sgn(pl)}${gbp(Math.abs(pl))} (${pct(pl / start)})</div>
-      ${a.kind === "futures" ? futuresLines(a, fees, n, s) : a.kind === "stocks" ? stockLines(a, fees) : `
+      ${a.kind === "mu_puts" || a.kind === "mu_short" ? muLines(a, fees, n, s) : a.kind === "futures" ? futuresLines(a, fees, n, s) : a.kind === "stocks" ? stockLines(a, fees) : `
       <div class="bar"><div style="width:${Math.min(100, a.fraction / a.max_lev * 100).toFixed(0)}%"></div></div>
       <div class="muted num">${(a.fraction * 100).toFixed(0)}% BTC${a.max_lev > 1 ? ` (${a.fraction.toFixed(2)}x of max ${a.max_lev}x)` : ""} · ${a.trades.length} trades · ${gbp(fees)} fees${a.funding_paid ? ` · ${gbp(a.funding_paid)} funding` : ""}</div>`}
       <div class="muted" style="margin-top:4px">${esc(s.why[n] || "")}</div>
@@ -261,6 +261,18 @@ function futuresLines(a, fees, n, s) {
     <div class="muted num">${a.fraction.toFixed(2)}x gross of max 2x · ${a.trades.length} rebalances · ${gbp(fees)} costs</div>${score}
     ${pos.length ? `<details><summary>Positions</summary><table style="font-size:12px">${pos.map(p =>
       `<tr><td><b>${esc(p.symbol)}</b></td><td class="muted">${esc(p.name)}</td><td class="${cls(p.weight)}">${p.weight >= 0 ? "long" : "short"} ${(Math.abs(p.weight) * 100).toFixed(0)}%</td>${p.pending != null ? `<td class="muted">→ ${(p.pending * 100).toFixed(0)}%</td>` : ""}</tr>`).join("")}</table></details>` : ""}`;
+}
+
+/* Betting against Micron: what's held, and for Claude's account how its calls score (lower Brier is better). */
+function muLines(a, fees, n, s) {
+  const sc = s.mu && s.mu.score;
+  const held = a.kind === "mu_puts"
+    ? (a.put ? `holding a $${a.put.strike.toFixed(0)} put to ${a.put.expiry} (paid ${gbp(a.put.paid)})` : "no put held")
+    : (a.fraction ? `${(a.fraction * 100).toFixed(0)}% short from $${a.entry_price.toFixed(0)}` : "flat");
+  const score = a.kind === "mu_short" && sc && sc.calls
+    ? `<div class="muted num">Brier ${sc.claude.toFixed(3)} vs signal ${sc.signal.toFixed(3)} · base rate ${sc.base_rate.toFixed(3)} · 50/50 ${sc.coin_flip.toFixed(3)} (${sc.calls} calls)</div>` : "";
+  return `<div class="bar"><div style="width:${Math.min(100, (a.fraction || (a.put ? 0.05 : 0)) * 100).toFixed(0)}%"></div></div>
+    <div class="muted num">${held} · ${a.trades.length} trades · ${gbp(fees)} costs</div>${score}`;
 }
 
 function renderResearch(s) {
