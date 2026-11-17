@@ -1214,14 +1214,11 @@ var W=190, H=90, GX=60, GY=48, PAD=22;
 var mapMinX=0, mapMinY=0;
 /* the sideways nudge is drawing-only: it never touches structure or packing */
 function visX(p){
-  /* a nudge carries everything chained on beside it, so pages to the right of a
-     tile you slide right go along with it instead of being slid under */
+  /* a nudge carries everything hanging off the tile, beside it and beneath it,
+     so the pages to its right aren't slid under and its children stay put
+     beneath it */
   var off = 0, q = p, g = 0;
-  while(q && g++ < 999){
-    off += q.xoff || 0;
-    if(q.dir !== "left" && q.dir !== "right") break;
-    q = q._par;
-  }
+  while(q && g++ < 999){ off += q.xoff || 0; q = q._par; }
   return p.x + off;
 }
 /* each page knows its parent for visX; hidden so it is never saved */
@@ -1257,7 +1254,7 @@ function viewNote(){
     if(!a||!b) return "";
     var ax=left(a)+W/2, ay=top(a)+H/2, bx=left(b)+W/2, by=top(b)+H/2;
     var stroke = ' stroke="var(--node-line)" stroke-width="1.5" fill="none"';
-    if(a.x!==b.x && a.y!==b.y){
+    if(visX(a)!==visX(b) && a.y!==b.y){
       /* Turn in the gap between the two tiles, so a branched sibling's line
          doesn't run along a row or column that already has a line in it. */
       var pts;
@@ -1756,7 +1753,7 @@ function paintPreview(){
     if(!a||!b) return "";
     var ax=px(a)+W/2, ay=py(a)+H/2, bx=px(b)+W/2, by=py(b)+H/2;
     var st = ' stroke="var(--accent)" stroke-width="1.5" fill="none" opacity=".85"';
-    if(a.x!==b.x && a.y!==b.y){
+    if(visX(a)!==visX(b) && a.y!==b.y){
       var pts = (b.dir==="down"||b.dir==="up")
         ? (function(){ var my=(ay+by)/2; return ax+' '+ay+', '+ax+' '+my+', '+bx+' '+my+', '+bx+' '+by; })()
         : (function(){ var mx=(ax+bx)/2; return ax+' '+ay+', '+mx+' '+ay+', '+mx+' '+by+', '+bx+' '+by; })();
