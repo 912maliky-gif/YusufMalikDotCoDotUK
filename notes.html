@@ -804,8 +804,8 @@ function render(){
   }
   if(timeline) app.insertAdjacentHTML("beforeend", timelineHTML());
   if(helpOpen) app.insertAdjacentHTML("beforeend", helpHTML());
-  padCanvas(app.querySelector(".mapscroll"));
   var newSc = app.querySelector(".mapscroll");
+  padCanvas(newSc, keepScroll);
   if(newSc && keepScroll){ newSc.scrollLeft = keepScroll[0]; newSc.scrollTop = keepScroll[1]; }
   var ta = app.querySelectorAll("textarea.bbody");
   for(var i=0;i<ta.length;i++) grow(ta[i]);
@@ -824,12 +824,16 @@ function grow(el){ el.style.height="auto"; el.style.height = el.scrollHeight+"px
 
 /* The sheet ends where the pages end. It only grows when something needs the
    room: a new page, or a drag whose preview spills past the edge. */
-function padCanvas(sc){
+function padCanvas(sc, keep){
   if(!sc) return;
   var inner = sc.querySelector(".mapinner");
   if(!inner) return;
-  inner.style.minWidth  = (+inner.getAttribute("data-bw") || 0) + "px";
-  inner.style.minHeight = (+inner.getAttribute("data-bh") || 0) + "px";
+  /* ...but it never shrinks out from under what you're looking at, or the
+     browser would yank the view sideways. Any slack goes on the next redraw
+     once you've scrolled back. */
+  var l = keep ? keep[0] : sc.scrollLeft, t = keep ? keep[1] : sc.scrollTop;
+  inner.style.minWidth  = Math.max(+inner.getAttribute("data-bw") || 0, l + sc.clientWidth)  + "px";
+  inner.style.minHeight = Math.max(+inner.getAttribute("data-bh") || 0, t + sc.clientHeight) + "px";
 }
 
 /* Paint the pending colour straight onto the tile so you can see it before Apply. */
@@ -1283,9 +1287,23 @@ function visX(p){
   /* a nudge carries everything hanging off the tile, beside it and beneath it,
      so the pages to its right aren't slid under and its children stay put
      beneath it */
-  var off = 0, q = p, g = 0;
-  while(q && g++ < 999){ off += q.xoff || 0; q = q._par; }
+  var off = 0, q = p, prev = null, g = 0;
+  while(q && g++ < 999){
+    /* the top page has nothing to slide against, so its nudge slides it (and
+       whatever is chained on beside it) across the pages hanging above and
+       below it */
+    if(q._par || !prev || prev.dir === "left" || prev.dir === "right") off += q.xoff || 0;
+    prev = q; q = q._par;
+  }
   return p.x + off;
+}
+function canNudge(n, p){
+  if(p.dir) return true;
+  return n.edges.some(function(e){
+    if(e[0] !== p.id) return false;
+    var k = page(n, e[1]);
+    return k && (k.dir === "down" || k.dir === "up");
+  });
 }
 /* each page knows its parent for visX; hidden so it is never saved */
 function linkParents(n){
@@ -1378,7 +1396,7 @@ function viewNote(){
                 : "Chain this on beside " + o.parent.title)+'">'
             + (o.kind === "hang" ? "\u21E1" : "\u21E0") + '</button>';
         })()
-      + (p.dir
+      + (canNudge(n, p)
           ? '<button class="spread" data-act="spread" data-note="'+n.id+'" data-page="'+p.id+'"'
             + ' title="Drag sideways to nudge this page and its children">'
             + "\u2194" + '</button>'
@@ -1890,7 +1908,7 @@ app.addEventListener("mousedown", function(e){
     e.preventDefault();
     var sn = note(sp.getAttribute("data-note"));
     var spg = sn && page(sn, sp.getAttribute("data-page"));
-    if(!sn || !spg || !spg.dir) return;
+    if(!sn || !spg || !canNudge(sn, spg)) return;
     spread = { n:sn, p:spg, sx:e.clientX, start:(spg.xoff || 0), pushed:false };
     document.body.style.cursor = "ew-resize";
     return;
