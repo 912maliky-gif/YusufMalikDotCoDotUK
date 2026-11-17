@@ -1742,6 +1742,9 @@ function typingUndo(){
 
 function applySnapshot(json){
   db = JSON.parse(json);
+  /* a fresh copy has lost each page's link to its parent, which the sideways
+     nudges are worked out through; put them back before drawing */
+  db.notes.forEach(linkParents);
   dirty = true;
   typingUndoAt = 0;
   persist();
@@ -2681,7 +2684,7 @@ document.getElementById("importer").addEventListener("change", function(e){
       if(!d || !Array.isArray(d.notes)) throw new Error("not a notes file");
       if(!confirm("Replace everything currently in this app with the contents of "+f.name+"?")) return;
       pushUndo();
-      db = d; view = {v:"front"}; save(); render();
+      db = d; db.notes.forEach(relayout); view = {v:"front"}; save(); render();
     }catch(err){ alert("Couldn't read that file: "+err.message); }
   };
   r.readAsText(f);
