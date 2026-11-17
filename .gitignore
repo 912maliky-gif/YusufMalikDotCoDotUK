@@ -1,0 +1,6 @@
+# Data: your data files must NEVER be put on the website (this repo is public)
+Data-store*.txt
+Data-store*.js
+*.ydata
+*.tsv
+*.xlsx
