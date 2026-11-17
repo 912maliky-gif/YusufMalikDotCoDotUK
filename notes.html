@@ -184,6 +184,35 @@ input,textarea,select{font:inherit;color:inherit}
 .x:hover{opacity:1;color:var(--danger)}
 .empty{padding:22px 16px;color:var(--muted);font-style:italic}
 
+.mapwrap{position:relative}
+.todobtn{position:absolute;top:10px;right:12px;z-index:6;display:inline-flex;align-items:center;gap:6px;
+  box-shadow:var(--shadow)}
+.todobtn.on{color:var(--ink);border-color:var(--muted)}
+.tdcount{min-width:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-ink);
+  font-size:11px;font-weight:660;line-height:18px;text-align:center}
+.todopane{position:fixed;top:74px;bottom:16px;right:clamp(10px,1.4vw,24px);width:var(--tpw,340px);z-index:30;
+  display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius);box-shadow:var(--shadow)}
+.todopane h2{margin:0;padding:13px 16px;font-size:12px;font-weight:660;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:8px;flex:none}
+.todopane h2 .spacer{flex:1}
+.tpnote{text-transform:none;letter-spacing:0;font-weight:600;color:var(--ink);font-size:13px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tpx{padding:2px 6px;border-radius:5px;color:var(--icon);font-size:12px}
+.tpx:hover{color:var(--icon-hi);background:var(--bg)}
+.tpbody{flex:1;min-height:0;overflow:auto;padding:6px 8px}
+.tpgrip{position:absolute;left:-6px;top:0;bottom:0;width:12px;cursor:ew-resize;z-index:1}
+.tpgrip::after{content:"";position:absolute;left:5px;top:50%;width:3px;height:40px;margin-top:-20px;
+  border-radius:3px;background:var(--line2);opacity:0;transition:opacity .15s}
+.tpgrip:hover::after,body.tp-resizing .tpgrip::after{opacity:1}
+body.tp-resizing{cursor:ew-resize;user-select:none;-webkit-user-select:none}
+body.todo-open .wrap{padding-right:calc(var(--tpw,340px) + 14px + clamp(10px,1.4vw,24px))}
+@media (max-width:760px){
+  .todopane{left:10px;right:10px;width:auto}
+  .tpgrip{display:none}
+  body.todo-open .wrap{padding-right:clamp(10px,1.4vw,24px)}
+}
 .todogroup{padding:12px 16px;border-bottom:1px solid var(--line)}
 .todogroup:last-child{border-bottom:none}
 .todogroup h3{margin:0 0 8px;font-size:13px;font-weight:640}
@@ -948,6 +977,10 @@ function render(){
     focusPointId = null;
     if(pel){ pel.focus(); caretToEnd(pel); }
   }
+  var paneOn = todoPanel && view.v === "note" && note(view.note);
+  document.body.classList.toggle("todo-open", !!paneOn);
+  applyTodoW();
+  if(paneOn) app.insertAdjacentHTML("beforeend", todoPaneHTML(note(view.note)));
   if(timeline) app.insertAdjacentHTML("beforeend", timelineHTML());
   if(helpOpen) app.insertAdjacentHTML("beforeend", helpHTML());
   var newSc = app.querySelector(".mapscroll");
@@ -1183,6 +1216,7 @@ function helpHTML(){
         ["Grip, bottom right","drag to reorder; a preview shows the result before you let go"],
         ["Hold \u2318 / Ctrl while dragging","move just that page, leaving its children behind"],
         ["\u2194 arrows","nudge a page sideways. Purely visual \u2014 nothing changes parent"],
+        ["To do (top right of the map)","opens this note\u2019s to-dos down the side. Drag its left edge to make it wider or narrower"],
         ["Right-click \u2192 Clean up","spread the map out so no page sits over or under one it isn't connected to. Replaces any \u2194 nudges"],
         ["<span class=\"helpicon\">"+PEOPLE_ICON+"</span> people icon","switch a page between being a sibling chained beside the page next to it, a child of the page its row hangs from, or a child of the page sitting straight above it"],
         ["Esc","cancel a drag"]
@@ -1401,6 +1435,70 @@ function timelineHTML(){
 }
 
 /* ---- front ---- */
+/* every point marked "to do" in a note, as clickable rows that open its page */
+function todoRows(n){
+  var items = [];
+  n.pages.forEach(function(p){
+    p.blocks.forEach(function(b){
+      ensurePoints(b).forEach(function(pt){
+        if(!pt.todo) return;
+        items.push('<button class="todo'+(pt.done?" is-done":"")+'" data-act="openPage"'
+          + ' data-note="'+n.id+'" data-page="'+p.id+'">'
+          + '<span class="box"></span>'
+          + '<span class="t">'+esc(pt.text || "untitled")
+          + ' <span class="where">'+esc(p.title)
+          + (b.title ? ' · '+esc(b.title) : '')
+          + (pt.person ? ' · '+esc(pt.person) : '')+'</span></span>'
+          + '</button>');
+      });
+    });
+  });
+  return items;
+}
+function openTodos(n){
+  var k = 0;
+  n.pages.forEach(function(p){ p.blocks.forEach(function(b){
+    ensurePoints(b).forEach(function(pt){ if(pt.todo && !pt.done) k++; });
+  }); });
+  return k;
+}
+
+/* The to-do side panel on a note's map. Open/closed lasts the tab; the width
+   is a per-browser preference. */
+var todoPanel = false, todoW = 340, tpResize = null;
+try{ todoPanel = sessionStorage.getItem("notes.todoPanel") === "1"; }catch(e){}
+try{ var tw = +localStorage.getItem("notes.todoW"); if(tw) todoW = tw; }catch(e){}
+function clampTodoW(w){ return Math.round(Math.max(240, Math.min(w, window.innerWidth - 320))); }
+function applyTodoW(){ document.body.style.setProperty("--tpw", clampTodoW(todoW) + "px"); }
+function todoPaneHTML(n){
+  var items = todoRows(n);
+  return '<aside class="todopane">'
+    + '<div class="tpgrip" title="Drag to make this wider or narrower"></div>'
+    + '<h2>To do<span class="tpnote">'+esc(n.title || "untitled")+'</span>'
+      + '<span class="spacer"></span>'
+      + '<button class="tpx" data-act="todoPanel" title="Close">\u2715</button></h2>'
+    + '<div class="tpbody">'
+      + (items.length ? items.join("") : '<div class="empty">Nothing marked \u201cto do\u201d in this note.</div>')
+    + '</div></aside>';
+}
+document.addEventListener("mousedown", function(e){
+  if(e.button !== 0 || !e.target.closest || !e.target.closest(".tpgrip")) return;
+  e.preventDefault();
+  tpResize = { sx:e.clientX, w:clampTodoW(todoW) };
+  document.body.classList.add("tp-resizing");
+});
+document.addEventListener("mousemove", function(e){
+  if(!tpResize) return;
+  todoW = clampTodoW(tpResize.w + (tpResize.sx - e.clientX));
+  applyTodoW();
+});
+document.addEventListener("mouseup", function(){
+  if(!tpResize) return;
+  tpResize = null;
+  document.body.classList.remove("tp-resizing");
+  try{ localStorage.setItem("notes.todoW", String(todoW)); }catch(e){}
+});
+
 function viewFront(){
   var notes = db.notes.map(function(n){
     var pages = n.pages.length;
@@ -1419,22 +1517,7 @@ function viewFront(){
   }).join("");
 
   var groups = db.notes.map(function(n){
-    var items = [];
-    n.pages.forEach(function(p){
-      p.blocks.forEach(function(b){
-        ensurePoints(b).forEach(function(pt){
-          if(!pt.todo) return;
-          items.push('<button class="todo'+(pt.done?" is-done":"")+'" data-act="openPage"'
-            + ' data-note="'+n.id+'" data-page="'+p.id+'">'
-            + '<span class="box"></span>'
-            + '<span class="t">'+esc(pt.text || "untitled")
-            + ' <span class="where">'+esc(p.title)
-            + (b.title ? ' · '+esc(b.title) : '')
-            + (pt.person ? ' · '+esc(pt.person) : '')+'</span></span>'
-            + '</button>');
-        });
-      });
-    });
+    var items = todoRows(n);
     if(!items.length) return "";
     return '<div class="todogroup"><h3>'+esc(n.title)+'</h3>'+items.join("")+'</div>';
   }).filter(Boolean).join("");
@@ -1619,10 +1702,13 @@ function viewNote(){
       '<button class="btn" data-act="tlOpen" data-note="'+n.id+'"'
       + ' title="Every change across this note">Timeline</button>')
   + '<div class="wrap">'
+    + '<div class="mapwrap">'
+    + '<button class="btn todobtn'+(todoPanel?" on":"")+'" data-act="todoPanel" title="This note\u2019s to-dos">'
+      + 'To do'+(openTodos(n) ? ' <span class="tdcount">'+openTodos(n)+'</span>' : '')+'</button>'
     + '<div class="mapscroll" data-note="'+n.id+'"><div class="mapinner" data-bw="'+cw+'" data-bh="'+ch+'"'
     + ' style="width:'+cw+'px;height:'+ch+'px">'
     + '<svg width="'+cw+'" height="'+ch+'">'+lines+'</svg>'+nodes
-    + '</div></div></div>';
+    + '</div></div></div></div>';
 }
 
 function peopleOptions(n, current){
@@ -2376,6 +2462,10 @@ app.addEventListener("click", function(e){
       break;
 
     case "front": editingPageId=null; view={v:"front"}; break;
+    case "todoPanel":
+      todoPanel = !todoPanel;
+      try{ sessionStorage.setItem("notes.todoPanel", todoPanel ? "1" : "0"); }catch(e){}
+      break;
     case "openNote": editingPageId=null; view={v:"note",note:c.n.id}; break;
     case "openPage": editingPageId=null; view={v:"page",note:c.n.id,page:c.p.id}; break;
 
@@ -2663,6 +2753,11 @@ document.addEventListener("keydown", function(e){
 
   if(e.key === "Escape" && helpOpen){ e.preventDefault(); helpOpen = false; render(); return; }
   if(e.key === "Escape" && timeline){ e.preventDefault(); timeline = null; render(); return; }
+  if(e.key === "Escape" && todoPanel && view.v === "note" && !(e.target.closest && e.target.closest("input,textarea,select,[contenteditable]"))){
+    e.preventDefault(); todoPanel = false;
+    try{ sessionStorage.setItem("notes.todoPanel", "0"); }catch(err){}
+    render(); return;
+  }
   if(e.key!=="Escape") return;
   var t = e.target.tagName;
   if(t==="INPUT"||t==="TEXTAREA"||t==="SELECT"||e.target.isContentEditable){ e.target.blur(); return; }
