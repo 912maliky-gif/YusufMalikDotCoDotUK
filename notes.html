@@ -603,10 +603,13 @@ function relayout(n){
       });
     });
 
-    /* Sit the parent in the middle of the children hanging beneath it. */
+    /* Sit the parent in the middle of the children hanging beneath it. With an
+       even number there is no middle tile, so lean left: the first child stays
+       under its parent and the next ones open out to the right, which is
+       where they were before. */
     var px = 0;
     if(kidXs.length){
-      px = Math.round((Math.min.apply(null, kidXs) + Math.max.apply(null, kidXs)) / 2);
+      px = Math.floor((Math.min.apply(null, kidXs) + Math.max.apply(null, kidXs)) / 2);
     }
     var g2 = 0;
     while(cells[px + ",0"] && g2++ < 400) px++;
@@ -785,6 +788,10 @@ function deletePage(n, id){
 var app = document.getElementById("app");
 
 function render(){
+  /* a redraw rebuilds the map box; keep it scrolled where you left it */
+  var oldSc = app.querySelector(".mapscroll");
+  var keepScroll = oldSc && view.v === "note" && oldSc.getAttribute("data-note") === view.note
+    ? [oldSc.scrollLeft, oldSc.scrollTop] : null;
   if(view.v==="front") app.innerHTML = viewFront();
   else if(view.v==="note") app.innerHTML = viewNote();
   else app.innerHTML = viewPage();
@@ -798,6 +805,8 @@ function render(){
   if(timeline) app.insertAdjacentHTML("beforeend", timelineHTML());
   if(helpOpen) app.insertAdjacentHTML("beforeend", helpHTML());
   padCanvas(app.querySelector(".mapscroll"));
+  var newSc = app.querySelector(".mapscroll");
+  if(newSc && keepScroll){ newSc.scrollLeft = keepScroll[0]; newSc.scrollTop = keepScroll[1]; }
   var ta = app.querySelectorAll("textarea.bbody");
   for(var i=0;i<ta.length;i++) grow(ta[i]);
   var stale = document.getElementById("swpop");
@@ -1409,7 +1418,7 @@ function viewNote(){
       '<button class="btn" data-act="tlOpen" data-note="'+n.id+'"'
       + ' title="Every change across this note">Timeline</button>')
   + '<div class="wrap">'
-    + '<div class="mapscroll"><div class="mapinner" data-bw="'+cw+'" data-bh="'+ch+'"'
+    + '<div class="mapscroll" data-note="'+n.id+'"><div class="mapinner" data-bw="'+cw+'" data-bh="'+ch+'"'
     + ' style="width:'+cw+'px;height:'+ch+'px">'
     + '<svg width="'+cw+'" height="'+ch+'">'+lines+'</svg>'+nodes
     + '</div></div></div>';
