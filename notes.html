@@ -1310,6 +1310,9 @@ function visX(p){
     /* the top page has nothing to slide against, so its nudge slides it (and
        whatever sits above or beside it) across the pages hanging below it */
     if(q._par || !prev || prev.dir !== "down") off += q.xoff || 0;
+    /* sliding a page also slides the sisters lined up after it, so it pushes
+       them along instead of landing on top of them */
+    if(q._before) for(var i=0;i<q._before.length;i++) off += q._before[i].xoff || 0;
     prev = q; q = q._par;
   }
   return p.x + off;
@@ -1326,9 +1329,20 @@ function canNudge(n, p){
 function linkParents(n){
   var pm = parentOf(n), byId = {};
   n.pages.forEach(function(p){ byId[p.id] = p; });
+  var cm = childrenOf(n);
   n.pages.forEach(function(p){
     Object.defineProperty(p, "_par", {value:byId[pm[p.id]] || null,
       writable:true, configurable:true, enumerable:false});
+    Object.defineProperty(p, "_before", {value:null,
+      writable:true, configurable:true, enumerable:false});
+  });
+  /* the sisters hanging above or below the same page, left to right */
+  n.pages.forEach(function(par){
+    ["down","up"].forEach(function(d){
+      var row = (cm[par.id] || []).map(function(id){ return byId[id]; })
+        .filter(function(k){ return k && k.dir === d; });
+      row.forEach(function(k, i){ k._before = row.slice(0, i); });
+    });
   });
 }
 var PALETTE = [
@@ -1926,7 +1940,17 @@ app.addEventListener("mousedown", function(e){
     var sn = note(sp.getAttribute("data-note"));
     var spg = sn && page(sn, sp.getAttribute("data-page"));
     if(!sn || !spg || !canNudge(sn, spg)) return;
-    spread = { n:sn, p:spg, sx:e.clientX, start:(spg.xoff || 0), pushed:false };
+    /* it can't be slid left onto the page beside it: stop one square short of
+       the nearest page on its row that isn't coming along with it */
+    var sv = visX(spg), lim = -Infinity;
+    sn.pages.forEach(function(q){
+      if(q === spg || q.y !== spg.y) return;
+      for(var a = q._par, g3 = 0; a && g3++ < 999; a = a._par) if(a === spg) return;
+      var v = visX(q);
+      if(v < sv && v > lim) lim = v;
+    });
+    spread = { n:sn, p:spg, sx:e.clientX, start:(spg.xoff || 0), pushed:false,
+               minG: lim === -Infinity ? -Infinity : (spg.xoff || 0) - (sv - lim - 1) };
     document.body.style.cursor = "ew-resize";
     return;
   }
@@ -2017,7 +2041,7 @@ document.addEventListener("mousemove", function(e){
   }
   if(spread){
     /* purely visual: shifts where it sits, never who it belongs to */
-    var g = spread.start + Math.round((e.clientX - spread.sx) / (W + GX));
+    var g = Math.max(spread.minG, spread.start + Math.round((e.clientX - spread.sx) / (W + GX)));
     if(g !== (spread.p.xoff || 0)){
       if(!spread.pushed){ pushUndo(); spread.pushed = true; }
       spread.p.xoff = g;
