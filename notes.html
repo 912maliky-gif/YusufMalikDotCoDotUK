@@ -1562,8 +1562,8 @@ function viewPage(){
       return '<button class="axischip'+(q.id===p.id?" on":"")+'"'
         + ' data-act="openPage" data-note="'+n.id+'" data-page="'+q.id+'">'+esc(q.title)+'</button>';
     }).join("") : "";
-    return '<div class="arm '+kind+'"><span class="armlab">'
-      + (kind==="col" ? "Column" : "Row") + '</span>' + chips + '</div>';
+    return '<div class="arm '+kind+'" aria-label="'+(kind==="col" ? "Column" : "Row")+'">'
+      + chips + '</div>';
   }
 
   var blocks = p.blocks.map(function(b){
