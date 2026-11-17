@@ -361,7 +361,17 @@ body.todo-open .wrap{padding-right:calc(var(--tpw,340px) + 14px + clamp(10px,1.4
 .pthint{margin-top:8px;font-size:11px;color:var(--muted);opacity:.75}
 
 .btop{display:flex;align-items:center;gap:8px}
-.btop .btitle{flex:1;min-width:0}
+.btop .btitle{flex:0 1 auto;width:auto;min-width:5ch;max-width:100%;field-sizing:content}
+.btop .bgap{flex:1}
+.bfold{flex:none;display:flex;align-items:center;justify-content:center;width:22px;height:22px;
+  border-radius:5px;color:var(--icon)}
+.bfold svg{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;
+  transition:transform .15s}
+.bfold:hover{color:var(--icon-hi);background:var(--bg)}
+.block.is-collapsed .bfold svg{transform:rotate(-90deg)}
+.bcount{color:var(--muted);font-size:12px;white-space:nowrap}
+.block.is-collapsed .points,.block.is-collapsed .bfoot{display:none}
+.block.is-collapsed{min-height:68px}
 .clock{flex:none;display:flex;align-items:center;gap:5px;padding:3px 7px;border-radius:5px;
   color:var(--icon);font-size:12px;white-space:nowrap}
 .clock:hover{color:var(--icon-hi);background:var(--bg)}
@@ -525,6 +535,7 @@ function persist(){
   if(!storageOK) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(function(){
+    saveTimer = null;
     try{ localStorage.setItem(KEY, JSON.stringify(db)); }
     catch(e){
       storageOK = false;
@@ -533,6 +544,15 @@ function persist(){
     }
   }, 200);
 }
+
+/* Refreshing or closing inside that short pause would drop the last change, so
+   write it out now - but only if one is waiting, never over another tab's work. */
+window.addEventListener("pagehide", function(){
+  if(!storageOK || !saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  try{ localStorage.setItem(KEY, JSON.stringify(db)); }catch(e){}
+});
 
 function save(){
   db.savedAt = Date.now();   /* time of the last edit */
@@ -1739,7 +1759,7 @@ function viewPage(){
 
   var blocks = p.blocks.map(function(b){
     var stamp = b.done && b.doneAt ? ' <span class="stamp">'+esc(shortStamp(b.doneAt))+'</span>' : "";
-    return '<div class="block'+(b.done?" is-done":"")+'" data-block="'+b.id+'">'
+    return '<div class="block'+(b.done?" is-done":"")+(b.collapsed?" is-collapsed":"")+'" data-block="'+b.id+'">'
       + '<button class="cgrip" data-act="cgrip" data-block="'+b.id+'"'
         + ' title="Drag to reorder this card">'
         + '<svg viewBox="0 0 14 22" width="10" height="15" aria-hidden="true">'
@@ -1754,7 +1774,16 @@ function viewPage(){
         + '</svg></button>'
       + '<div class="btop">'
         + '<input class="btitle" placeholder="title" value="'+esc(b.title)+'"'
+          + ' size="'+Math.max(5, (b.title || "").length + 1)+'"'
           + ' data-act="bTitle" data-block="'+b.id+'">'
+        /* fold the card down to its title, or open it back up */
+        + '<button class="bfold" data-act="bFold" data-block="'+b.id+'"'
+          + ' title="'+(b.collapsed ? "Expand this card" : "Collapse this card")+'">'
+          + '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">'
+          + '<path d="M2.8 4.4 6 7.6l3.2-3.2"/></svg></button>'
+        + (b.collapsed ? '<span class="bcount">'+ensurePoints(b).filter(function(q){ return q.text; }).length
+            +' point'+(ensurePoints(b).filter(function(q){ return q.text; }).length === 1 ? "" : "s")+'</span>' : "")
+        + '<span class="bgap"></span>'
         + '<button class="clock" data-act="tlOpen" data-note="'+n.id+'" data-page="'+p.id+'"'
           + ' data-block="'+b.id+'" title="Changes to this card">\u25F4'
           + (lastTouched(n,b.id) ? ' <span class="stamp">'+esc(shortStamp(lastTouched(n,b.id)))+'</span>' : "")
@@ -2403,8 +2432,8 @@ function confirmDeletePage(n, p){
 /* ============ events ============ */
 var NEEDS_PAGE = {addPage:1, askDelPage:1, delPage:1, openPage:1, editPage:1,
                   addBlock:1, delBlock:1, bTodo:1, bDone:1, ptDone:1, ptDel:1,
-                  spread:1, cgrip:1, rehang:1};
-var NEEDS_BLOCK = {delBlock:1, bTodo:1, bDone:1, ptDone:1, ptDel:1};
+                  spread:1, cgrip:1, rehang:1, bFold:1};
+var NEEDS_BLOCK = {delBlock:1, bTodo:1, bDone:1, ptDone:1, ptDel:1, bFold:1};
 
 function ctx(el){
   var n = el.getAttribute("data-note") ? note(el.getAttribute("data-note")) : note(view.note);
@@ -2550,6 +2579,7 @@ app.addEventListener("click", function(e){
       c.p.blocks = c.p.blocks.filter(function(x){return x.id!==c.b.id;}); save(); break;
 
     case "bTodo": pushUndo(); c.b.todo = !c.b.todo; save(); break;
+    case "bFold": c.b.collapsed = !c.b.collapsed; save(); break;
     case "bDone":
       pushUndo();
       c.b.done = !c.b.done;
@@ -2631,6 +2661,7 @@ app.addEventListener("input", function(e){
   }
   else if(act==="bTitle"){
     c.b.title = el.value;
+    el.size = Math.max(5, el.value.length + 1);     /* keeps the fold arrow beside the words */
     logChange(c.n, "edit", {pageId:c.p.id, blockId:c.b.id, section:c.p.title, text:blockLabel(c.b)});
   }
   else if(act==="bBody"){
