@@ -210,6 +210,7 @@ details.colpick label{display:flex;gap:8px;padding:3px 0;font-size:13px}
 body.locked #app{visibility:hidden}
 #pwmodal{position:fixed;inset:0;z-index:160;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:16px}
 #pwmodal .gatecard{text-align:left}
+.reckey{font:600 19px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.04em;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center;word-break:break-all;user-select:all}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:10px;z-index:200;font-weight:500}
 </style>
 </head>
@@ -257,7 +258,7 @@ body.locked #app{visibility:hidden}
    so new features automatically work on old data without re-pasting anything.
    Backups store every top-level DB field, so new things a future version adds (e.g. watchlists) are
    carried in backups automatically. A page never opens data from a NEWER format than it understands. */
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 // The data file that lives next to Data.html. Browsers won't let a page read a .json file beside it, but they do let it
 // load a script from its own folder (whatever the extension). It's .txt, not .js, because Windows/Edge flags .js downloads as dangerous.
 const STORE_FILE = 'Data-store.txt';
@@ -488,37 +489,128 @@ const IDB = {
   get(k){ return new Promise((res, rej) => { const tx = this.db.transaction('kv', 'readonly'); const r = tx.objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   del(k){ return new Promise((res, rej) => { const tx = this.db.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); },
 };
-// ---------- encryption: everything stored is encrypted with your password ----------
-// AES-256-GCM. The key is made from your password with PBKDF2-SHA256 (600,000 rounds, random salt), which makes
-// every password guess slow. The key only ever exists in this tab's memory while Data is unlocked: nothing
-// readable is written to the browser or to the data file. There is no way to recover a forgotten password.
+// ---------- encryption: everything stored is encrypted ----------
+// Your data is encrypted (AES-256-GCM) with a random DATA KEY. The data key is itself locked ("wrapped") in one or
+// more slots, each opened by a combination of secrets:
+//   pw  — your password alone                       (used until you turn on a passkey)
+//   pk  — your password + a passkey on one device   (passkey = Face ID / Touch ID / Windows Hello, via its PRF secret)
+//   rec — your password + your printed recovery key (for when a passkey is lost)
+// When a passkey is on, there is no pw slot, so the password alone opens nothing. The password is stretched with
+// PBKDF2-SHA256 (600,000 rounds) so every guess is slow; slot keys are made with HKDF-SHA256. Keys only ever exist
+// in this tab's memory while Data is unlocked. Nothing readable is written anywhere. There is no recovery without
+// the password.
 const KDF = { name:'PBKDF2-SHA256', iter:600000 };
 const MAX_TRIES = 5;          // wrong passwords allowed per device before its stored copy is erased
 const AUTO_LOCK_MIN = 15;     // lock after this many minutes without use
-const CRYPTO = { key:null, salt:null, iter:KDF.iter };
+const CRYPTO = { dk:null, dkRaw:null, pwBits:null, keyring:null };
 const hasCrypto = () => !!(window.crypto && crypto.subtle && window.isSecureContext !== false);
-async function deriveKey(pw, salt, iter){
-  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name:'PBKDF2', hash:'SHA-256', salt, iterations:iter }, base, { name:'AES-GCM', length:256 }, false, ['encrypt', 'decrypt']);
+const rand = n => crypto.getRandomValues(new Uint8Array(n));
+const utf8 = s => new TextEncoder().encode(s);
+const cat = (...a) => { const o = new Uint8Array(a.reduce((n, x) => n + x.length, 0)); let i = 0; for (const x of a){ o.set(x, i); i += x.length; } return o; };
+class NeedsPasskeyError extends Error { constructor(){ super('This data is protected with a passkey.'); this.name = 'NeedsPasskeyError'; } }
+async function pwBitsFor(pw, saltB64, iter){
+  const base = await crypto.subtle.importKey('raw', utf8(pw), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt:b64ToBytes(saltB64), iterations:iter }, base, 256));
 }
-async function newKey(pw){ const salt = crypto.getRandomValues(new Uint8Array(16)); CRYPTO.key = await deriveKey(pw, salt, KDF.iter); CRYPTO.salt = salt; CRYPTO.iter = KDF.iter; }
+async function kekFrom(parts, info){
+  const base = await crypto.subtle.importKey('raw', cat(...parts), 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name:'HKDF', hash:'SHA-256', salt:new Uint8Array(32), info:utf8(info) }, base, { name:'AES-GCM', length:256 }, false, ['encrypt', 'decrypt']);
+}
+async function wrapDK(kek){ const iv = rand(12); return { iv:bytesToB64(iv), wrapped:bytesToB64(new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv }, kek, CRYPTO.dkRaw))) }; }
+async function unwrapDK(kek, slot){ return new Uint8Array(await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64ToBytes(slot.iv) }, kek, b64ToBytes(slot.wrapped))); }
+async function setDK(raw){ CRYPTO.dkRaw = raw; CRYPTO.dk = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']); }
+const slotsOf = (kr, type) => (kr && kr.slots || []).filter(s => s.type === type);
+const needsPasskey = kr => !!kr && slotsOf(kr, 'pk').length > 0 && slotsOf(kr, 'pw').length === 0;
+// recovery key: 24 characters (120 bits), shown once, e.g. K7QF-3M9X-...
+const REC_ALPHA = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
+const newRecoveryKey = () => Array.from(rand(24), b => REC_ALPHA[b % REC_ALPHA.length]).join('').match(/.{4}/g).join('-');
+const normRec = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+// a brand-new data key, unlocked by the password alone
+async function newKeyring(pw){
+  await setDK(rand(32));
+  const kr = { v:2, id:bytesToB64(rand(12)), kdf:KDF.name, iter:KDF.iter, pwSalt:bytesToB64(rand(16)), prfSalt:bytesToB64(rand(32)), slots:[] };
+  CRYPTO.pwBits = await pwBitsFor(pw, kr.pwSalt, kr.iter);
+  kr.slots.push({ type:'pw', ...(await wrapDK(await kekFrom([CRYPTO.pwBits], 'data/pw'))) });
+  CRYPTO.keyring = kr;
+}
+// opens a keyring → sets this tab's data key. creds: { pw, prf, credId, rec }. Throws OperationError if a secret is wrong.
+async function unlockKeyring(kr, creds){
+  const pwBits = await pwBitsFor(creds.pw || '', kr.pwSalt, kr.iter);
+  let slot, kek;
+  if (creds.rec){ slot = slotsOf(kr, 'rec')[0]; if (!slot) throw new Error('This data has no recovery key.'); kek = await kekFrom([pwBits, utf8(normRec(creds.rec))], 'data/rec'); }
+  else if (creds.prf){ slot = slotsOf(kr, 'pk').find(s => s.credId === creds.credId); if (!slot) throw new Error('That passkey isn’t one of the passkeys for this data.'); kek = await kekFrom([pwBits, creds.prf], 'data/pk'); }
+  else { slot = slotsOf(kr, 'pw')[0]; if (!slot) throw new NeedsPasskeyError(); kek = await kekFrom([pwBits], 'data/pw'); }
+  await setDK(await unwrapDK(kek, slot));
+  CRYPTO.pwBits = pwBits; CRYPTO.keyring = JSON.parse(JSON.stringify(kr));
+}
+// checks a password against the one used to unlock this session (without storing the password)
+async function passwordMatches(pw){
+  const b = await pwBitsFor(pw, CRYPTO.keyring.pwSalt, CRYPTO.keyring.iter); let d = 0;
+  for (let i = 0; i < b.length; i++) d |= b[i] ^ CRYPTO.pwBits[i];
+  return d === 0;
+}
 async function sealBytes(u8){
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv }, CRYPTO.key, u8));
-  return { enc:{ alg:'AES-256-GCM', kdf:KDF.name, iter:CRYPTO.iter, salt:bytesToB64(CRYPTO.salt), iv:bytesToB64(iv) }, ct };
+  const iv = rand(12);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv }, CRYPTO.dk, u8));
+  return { enc:{ v:2, alg:'AES-256-GCM', iv:bytesToB64(iv), keyring:CRYPTO.keyring }, ct };
 }
-const openBytes = async (key, enc, ct) => new Uint8Array(await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64ToBytes(enc.iv) }, key, ct));
 const isWrongPassword = e => e && (e.name === 'OperationError' || e.name === 'InvalidAccessError');
-const sameSalt = enc => !!(enc && CRYPTO.key && CRYPTO.salt && bytesToB64(CRYPTO.salt) === enc.salt);
-// decrypts (or, for old unencrypted files, just reads) stored data; on success the unlocked key becomes this tab's key
-async function openStore(meta, data, pw){
-  if (!meta || !meta.enc) return decodeBackup(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
-  let key, salt = b64ToBytes(meta.enc.salt), iter = meta.enc.iter;
-  if (pw == null && sameSalt(meta.enc)) key = CRYPTO.key; else key = await deriveKey(pw || '', salt, iter);
-  const bytes = await openBytes(key, meta.enc, data);           // throws OperationError if the password is wrong
-  CRYPTO.key = key; CRYPTO.salt = salt; CRYPTO.iter = iter;
+const sameKeyring = enc => !!(enc && enc.keyring && CRYPTO.keyring && CRYPTO.dk && enc.keyring.id === CRYPTO.keyring.id);
+// decrypts (or, for old unencrypted files, just reads) stored data. creds: a password string, or { pw, prf, credId, rec }.
+// On success the unlocked keys become this tab's keys.
+async function openStore(meta, data, creds){
+  const raw = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  if (!meta || !meta.enc) return decodeBackup(raw);
+  if (typeof creds === 'string') creds = { pw:creds };
+  const enc = meta.enc;
+  if (!enc.keyring){
+    // v1.3 format: the password-made key encrypted the data directly. Opened, then moved to a new keyring.
+    const base = await crypto.subtle.importKey('raw', utf8((creds && creds.pw) || ''), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name:'PBKDF2', hash:'SHA-256', salt:b64ToBytes(enc.salt), iterations:enc.iter }, base, { name:'AES-GCM', length:256 }, false, ['decrypt']);
+    const bytes = new Uint8Array(await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64ToBytes(enc.iv) }, key, raw));
+    await newKeyring(creds.pw); const db = await decodeBackup(bytes.buffer); db.__rekeyed = true; return db;
+  }
+  if (!creds && sameKeyring(enc)){ /* already unlocked with this data key */ }
+  else await unlockKeyring(enc.keyring, creds || {});
+  const bytes = new Uint8Array(await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64ToBytes(enc.iv) }, CRYPTO.dk, raw));
   return decodeBackup(bytes.buffer);
 }
+
+// ---------- passkeys (WebAuthn with the PRF extension) ----------
+// A passkey can't be read or copied, but it can produce a fixed secret for this site (the "PRF" output) after
+// Face ID / Touch ID / Windows Hello. That secret, combined with your password, opens the data key.
+// Passkeys only work on the website (https), not when Data.html is opened as a file.
+const RP_ID = /(^|\.)yusufmalik\.co\.uk$/.test(location.hostname) ? 'yusufmalik.co.uk' : location.hostname;
+const canPasskey = () => !IS_LOCAL_FILE && hasCrypto() && !!(window.PublicKeyCredential && navigator.credentials);
+const b64url = u8 => bytesToB64(u8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64url = s => b64ToBytes(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
+const NO_PRF = 'This passkey or browser can’t produce an encryption key. Update the device (iOS/iPadOS/macOS 18 or later, an up-to-date Edge or Chrome), or try a different passkey.';
+const PK = {
+  // asks for any of the keyring's passkeys → { credId, prf }
+  async get(kr, onlyCredId){
+    const allow = slotsOf(kr, 'pk').filter(s => !onlyCredId || s.credId === onlyCredId).map(s => ({ type:'public-key', id:fromB64url(s.credId) }));
+    if (onlyCredId && !allow.length) allow.push({ type:'public-key', id:fromB64url(onlyCredId) });
+    const cred = await navigator.credentials.get({ publicKey:{ challenge:rand(32), rpId:RP_ID, allowCredentials:allow, userVerification:'required', timeout:120000, extensions:{ prf:{ eval:{ first:b64ToBytes(kr.prfSalt) } } } } });
+    const r = cred.getClientExtensionResults(); const out = r.prf && r.prf.results && r.prf.results.first;
+    if (!out) throw new Error(NO_PRF);
+    return { credId:b64url(new Uint8Array(cred.rawId)), prf:new Uint8Array(out) };
+  },
+  // makes a new passkey for this site → { credId, prf }
+  async create(kr){
+    const cred = await navigator.credentials.create({ publicKey:{
+      rp:{ name:'Data', id:RP_ID }, user:{ id:rand(16), name:'Data', displayName:'Data — people changes tracker' },
+      challenge:rand(32), pubKeyCredParams:[{ type:'public-key', alg:-7 }, { type:'public-key', alg:-257 }],
+      authenticatorSelection:{ residentKey:'preferred', userVerification:'required' }, timeout:120000,
+      extensions:{ prf:{ eval:{ first:b64ToBytes(kr.prfSalt) } } } } });
+    const credId = b64url(new Uint8Array(cred.rawId)); const r = cred.getClientExtensionResults();
+    if (r.prf && r.prf.enabled === false) throw new Error(NO_PRF);
+    if (r.prf && r.prf.results && r.prf.results.first) return { credId, prf:new Uint8Array(r.prf.results.first) };
+    return { credId, prf:(await PK.get(kr, credId)).prf };   // some browsers only give the secret on sign-in, so ask once more
+  },
+};
+const deviceLabel = () => IS_IOS ? (/iPhone/.test(UA) ? 'iPhone' : 'iPad') : /Windows/.test(UA) ? 'Windows' : /Mac/.test(UA) ? 'Mac' : 'This device';
+const passkeyErrorText = e => e && e.name === 'NotAllowedError' ? 'Passkey cancelled or timed out.' : e && e.name === 'InvalidStateError' ? 'That passkey is already set up.' : (e && e.message) || 'Passkey failed.';
+
 // wrong-password counter, kept per device (in two places so it isn't trivially reset)
 let FAILS_IDB = 0;
 function getFails(){ let n = 0; try { n = +localStorage.getItem('data-fails') || 0; } catch (e) {} return Math.max(n, FAILS_IDB || 0); }
@@ -536,7 +628,7 @@ async function removePlainLeftovers(){ if (IDB.ok){ for (const k of ['db', 'db-b
 let persistChain = Promise.resolve();
 function persist(){ persistChain = persistChain.then(doPersist, doPersist); return persistChain; }
 async function doPersist(){
-  if (!IDB.ok || IDB.blocked || !CRYPTO.key) return;
+  if (!IDB.ok || IDB.blocked || !CRYPTO.dk) return;
   try {
     DB.schema = SCHEMA; DB.appVersion = APP_VERSION;
     const { blob } = await encodeBackup();
@@ -545,9 +637,10 @@ async function doPersist(){
   } catch (e) { console.error(e); toast('Could not save in the browser — please Save data file'); }
 }
 async function adoptLoaded(loaded, savedAt, changedAt){
+  const rekeyed = !!loaded.__rekeyed; delete loaded.__rekeyed;
   const fromVer = loaded.appVersion, from = migrate(loaded);
   loaded.savedAt = savedAt || null;
-  loaded.changedAt = (from < SCHEMA || !savedAt) ? new Date().toISOString() : (changedAt || savedAt);
+  loaded.changedAt = (from < SCHEMA || !savedAt || rekeyed) ? new Date().toISOString() : (changedAt || savedAt);
   DB = loaded; IDB.blocked = false; buildIndexes(); rebuild(); await persist();
   return fromVer !== APP_VERSION ? `Updated to Data v${APP_VERSION} (from v${fromVer || '1.0'}) — your data carried over.` : '';
 }
@@ -641,6 +734,24 @@ function parseStoreFile(buf){
   }
   return { meta:{}, data:u8 };
 }
+// shows a new recovery key once; resolves true only when the user confirms they've saved it
+function showRecoveryKey(rec){
+  return new Promise(res => {
+    const d = document.createElement('div'); d.id = 'pwmodal';
+    d.innerHTML = `<div class="card gatecard"><h3>Your recovery key</h3>
+      <p class="muted" style="margin-top:0">If you lose your passkey, this key <b>plus your password</b> opens your data. It’s shown only once. Keep it somewhere safe and separate from this device — printed, or as a note in Apple Passwords.</p>
+      <div class="reckey">${rec}</div>
+      <div class="row"><button type="button" data-copy>Copy</button></div>
+      <label class="small" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-ok> I’ve saved my recovery key</label>
+      <div class="row"><button class="pri" type="button" data-go disabled>Continue</button><button type="button" data-x>Cancel</button></div></div>`;
+    document.body.appendChild(d);
+    const end = v => { d.remove(); res(v); };
+    $('[data-copy]', d).onclick = async () => toast(await copyText(rec) ? 'Recovery key copied' : 'Copy failed — write it down');
+    $('[data-ok]', d).onchange = e => { $('[data-go]', d).disabled = !e.target.checked; };
+    $('[data-go]', d).onclick = () => end(true);
+    $('[data-x]', d).onclick = () => end(false);
+  });
+}
 // a password box in a small dialog (used when a file has a different password)
 function askPassword(message){
   return new Promise(res => {
@@ -675,14 +786,18 @@ $('#filein').addEventListener('change', async ev => {
   let parsed;
   try { parsed = parseStoreFile(await f.arrayBuffer()); } catch (e) { alert('Could not read that file: ' + e.message); return; }
   if (GATE.active && GATE.onFile){ GATE.onFile(parsed, f.name); return; }   // chosen from the lock screen
-  let pw = null;
-  if (parsed.meta.enc && !sameSalt(parsed.meta.enc)){
-    pw = await askPassword(`${esc(f.name)} was saved with a different password. Enter that password to open it.`);
+  let creds = null;
+  if (parsed.meta.enc && !sameKeyring(parsed.meta.enc)){
+    const kr = parsed.meta.enc.keyring, pk = needsPasskey(kr);
+    if (pk && !canPasskey()){ alert(`${f.name} is protected with a passkey. Open it on the website version of Data, or use your recovery key from the lock screen.`); return; }
+    const pw = await askPassword(`${esc(f.name)} uses a different password${pk ? ' and a passkey' : ''}. Enter its password${pk ? ', then confirm with your passkey' : ''}.`);
     if (pw == null) return;
+    creds = { pw };
+    if (pk){ try { Object.assign(creds, await PK.get(kr)); } catch (e) { alert(passkeyErrorText(e)); return; } }
   }
   await busy('Loading data file…');
   try {
-    const loaded = await openStore(parsed.meta, parsed.data, pw);
+    const loaded = await openStore(parsed.meta, parsed.data, creds);
     await setFails(0);
     const note = await adoptLoaded(loaded, parsed.meta.enc ? parsed.meta.savedAt : null, parsed.meta.savedAt);
     toast(`Loaded ${DB.snapshots.length} week(s). ${note}` + (parsed.meta.enc ? '' : ' It was unencrypted — click Save data file to replace it with an encrypted one.'));
@@ -1481,16 +1596,25 @@ function renderSettings(main){
       <div class="row"><button class="pri" id="s-save" ${DB.snapshots.length ? '' : 'disabled'}>Save data file</button><button id="s-load">Load a data file manually…</button></div>
       <p class="muted" style="font-size:12px;margin-bottom:0">Browser storage: ${IDB.ok ? '<span style="color:var(--pos)">working</span> — the browser also keeps a copy; whichever is newer (browser or file) is used.' : `<span style="color:var(--neg)">not available</span> — your data is read from ${STORE_FILE} each time, so save the data file after every change.`}</p>
     </div>
-    <div class="card"><h3>Password &amp; encryption</h3>
-      <p style="margin-top:0">Everything Data stores — on this device and in ${STORE_FILE} — is encrypted with AES-256 using your password. It locks itself after ${AUTO_LOCK_MIN} minutes without use, and ${MAX_TRIES} wrong passwords in a row erase the copy stored on this device. There is no password recovery.</p>
-      <p class="muted" style="margin:0 0 6px"><b>Change password</b></p>
+    <div class="card" id="sec"><h3>Password, passkey &amp; encryption</h3>
+      ${(() => { const kr = CRYPTO.keyring, pks = slotsOf(kr, 'pk'), on = needsPasskey(kr);
+        return `<p style="margin-top:0">Everything Data stores — on this device and in ${STORE_FILE} — is encrypted with AES-256. It locks itself after ${AUTO_LOCK_MIN} minutes without use, and ${MAX_TRIES} wrong attempts in a row erase the copy stored on this device. There is no password recovery.</p>
+        <p style="margin:0 0 8px"><b>Two-factor:</b> ${on ? `<span class="pill t-pos">On</span> password + passkey${slotsOf(kr, 'rec').length ? ', with a recovery key' : ''}` : '<span class="pill t-warn">Off</span> password only'}</p>
+        ${pks.length ? `<table class="t" style="margin-bottom:10px"><tr><th>Passkey</th><th>Added</th><th></th></tr>${pks.map(sl => `<tr><td>${esc(sl.label || 'Passkey')}</td><td>${sl.added ? fmtISO(sl.added) : ''}</td><td style="text-align:right">${pks.length > 1 ? `<button class="sm danger" data-rmpk="${esc(sl.credId)}">Remove</button>` : ''}</td></tr>`).join('')}</table>` : ''}
+        ${canPasskey()
+          ? `<div class="row">${on
+              ? '<button id="pk-add">Add another passkey</button><button id="pk-rec">New recovery key</button><span class="spacer"></span><button class="danger" id="pk-off">Turn off two-factor</button>'
+              : '<button class="pri" id="pk-add">Turn on two-factor (add a passkey)</button>'}</div>
+             <p class="muted small" style="margin:8px 0 0">${on ? 'Add a passkey on each device you use (e.g. Windows Hello on your laptop). Apple passkeys sync across your Apple devices through Apple Passwords.' : 'You’ll be asked for Face ID / Touch ID / Windows Hello, then shown a one-time recovery key to keep safe.'}</p>`
+          : `<p class="muted small" style="margin:0">${IS_LOCAL_FILE ? 'Passkeys only work on the website version of Data (www.yusufmalik.co.uk/data.html), not when Data.html is opened as a file.' : 'This browser doesn’t support passkeys.'}</p>`}`; })()}
+      <p class="muted" style="margin:16px 0 6px"><b>Change password</b></p>
       <div class="row">
         <input type="password" id="s-pw0" autocomplete="current-password" placeholder="Current password" style="flex:1;min-width:160px">
         <input type="password" id="s-pw1" autocomplete="new-password" placeholder="New password (10+ characters)" style="flex:1;min-width:160px">
         <input type="password" id="s-pw2" autocomplete="new-password" placeholder="New password again" style="flex:1;min-width:160px">
         <button id="s-pwgo">Change password</button>
       </div>
-      <p class="muted small" style="margin-bottom:0">After changing it, save the data file again. Older data files keep the password they were saved with.</p>
+      <p class="muted small" style="margin-bottom:0">After any change here, click Save data file and delete older copies of ${STORE_FILE} — they still open the old way.</p>
     </div>
     <div class="card"><h3>Version</h3>
       <p style="margin-top:0">This is <b>Data v${APP_VERSION}</b> (data format ${SCHEMA}).</p>
@@ -1520,26 +1644,69 @@ function renderSettings(main){
     <div class="row" style="margin-top:14px"><button class="pri" id="s-apply">Save settings</button><span class="spacer"></span><button class="danger" id="s-wipe">Delete all data…</button></div>
   </div>`;
   $('#s-save').onclick = saveBackup; $('#s-load').onclick = pickBackup;
+  // every security change first re-checks the password (wrong ones count towards the limit)
+  async function confirmPw(msg){
+    const pw = await askPassword(msg || 'Enter your password to continue.'); if (pw == null) return null;
+    await busy('Checking…'); const ok = await passwordMatches(pw); done();
+    if (ok){ await setFails(0); return pw; }
+    const left = await failedAttempt();
+    if (!left){ alert('Too many wrong attempts. The copy stored on this device has been erased.'); SKIP_UNLOAD = true; location.reload(); return null; }
+    alert(`Wrong password. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); return null;
+  }
+  async function saved(msg){ markChanged(); await persist(); done(); renderChrome(); renderSettings(main); $('#sec') && $('#sec').scrollIntoView({ block:'center' }); toast(msg); }
+  const kr = CRYPTO.keyring;
+  const addRecSlot = async rec => { kr.slots = kr.slots.filter(x => x.type !== 'rec'); kr.slots.push({ type:'rec', added:todayISO(), ...(await wrapDK(await kekFrom([CRYPTO.pwBits, utf8(normRec(rec))], 'data/rec'))) }); };
+  if ($('#pk-add')) $('#pk-add').onclick = async () => {
+    const first = !needsPasskey(kr);
+    if (!(await confirmPw(first ? 'Enter your password to turn on two-factor.' : 'Enter your password to add a passkey.'))) return;
+    let made; try { made = await PK.create(kr); } catch (e) { alert(passkeyErrorText(e)); return; }
+    let rec = null;
+    if (first){ rec = newRecoveryKey(); if (!(await showRecoveryKey(rec))) { toast('Two-factor not turned on.'); return; } }
+    await busy('Saving…');
+    kr.slots.push({ type:'pk', credId:made.credId, label:`Passkey (${deviceLabel()})`, added:todayISO(), ...(await wrapDK(await kekFrom([CRYPTO.pwBits, made.prf], 'data/pk'))) });
+    if (first){ await addRecSlot(rec); kr.slots = kr.slots.filter(x => x.type !== 'pw'); }
+    await saved(first ? 'Two-factor is on. Click Save data file, and delete older copies of the data file — they open with the password alone.' : 'Passkey added.');
+  };
+  if ($('#pk-rec')) $('#pk-rec').onclick = async () => {
+    if (!(await confirmPw('Enter your password to make a new recovery key. The old one will stop working.'))) return;
+    const rec = newRecoveryKey(); if (!(await showRecoveryKey(rec))) return;
+    await busy('Saving…'); await addRecSlot(rec); await saved('New recovery key set. Click Save data file.');
+  };
+  if ($('#pk-off')) $('#pk-off').onclick = async () => {
+    if (!confirm('Turn off two-factor? Your data will open with your password alone.')) return;
+    if (!(await confirmPw())) return;
+    await busy('Saving…');
+    kr.slots = kr.slots.filter(x => x.type !== 'pk' && x.type !== 'rec');
+    kr.slots.push({ type:'pw', ...(await wrapDK(await kekFrom([CRYPTO.pwBits], 'data/pw'))) });
+    await saved('Two-factor is off. Click Save data file.');
+  };
+  $$('[data-rmpk]', main).forEach(btn => btn.onclick = async () => {
+    if (!(await confirmPw('Enter your password to remove this passkey.'))) return;
+    kr.slots = kr.slots.filter(x => !(x.type === 'pk' && x.credId === btn.dataset.rmpk));
+    await busy('Saving…'); await saved('Passkey removed from Data. (You can also delete it in Apple Passwords / your device settings.)');
+  });
   $('#s-pwgo').onclick = async () => {
     const p0 = $('#s-pw0').value, p1 = $('#s-pw1').value, p2 = $('#s-pw2').value;
     if (p1.length < 10){ alert('Use at least 10 characters for the new password.'); return; }
     if (p1 !== p2){ alert('The two new passwords don’t match.'); return; }
-    await busy('Checking password…');
-    try {
-      const salt = CRYPTO.salt, key = await deriveKey(p0, salt, CRYPTO.iter);
-      // check the current password by decrypting this device's copy with it
-      const vault = IDB.ok ? await IDB.get('vault') : null;
-      if (vault && vault.enc && vault.enc.salt === bytesToB64(salt)) await openBytes(key, vault.enc, vault.ct);
-      else { const probe = await sealBytes(new Uint8Array([1])); await openBytes(key, probe.enc, probe.ct); }
-    } catch (e) {
-      done();
-      if (isWrongPassword(e)){ const left = await failedAttempt(); if (!left){ alert('Too many wrong passwords. The copy stored on this device has been erased.'); SKIP_UNLOAD = true; location.reload(); return; } alert(`Current password is wrong. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); }
-      else alert('Something went wrong: ' + e.message);
-      return;
+    await busy('Checking password…'); const good = await passwordMatches(p0); done();
+    if (!good){ const left = await failedAttempt(); if (!left){ alert('Too many wrong attempts. The copy stored on this device has been erased.'); SKIP_UNLOAD = true; location.reload(); return; } alert(`Current password is wrong. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); return; }
+    await setFails(0);
+    const on = needsPasskey(kr);
+    let pkNow = null, rec = null;
+    if (on){
+      if (!canPasskey()){ alert('With two-factor on, change your password on the website version of Data.'); return; }
+      alert('Confirm with your passkey. Other passkeys will need adding again afterwards, and you’ll get a new recovery key.');
+      try { pkNow = await PK.get(kr); } catch (e) { alert(passkeyErrorText(e)); return; }
+      rec = newRecoveryKey(); if (!(await showRecoveryKey(rec))) return;
     }
-    await setFails(0); await busy('Re-encrypting…');
-    await newKey(p1); markChanged(); await persist(); done(); renderChrome(); renderSettings(main);
-    toast('Password changed. Click Save data file so your data file uses the new password too.');
+    await busy('Re-encrypting…');
+    kr.pwSalt = bytesToB64(rand(16)); CRYPTO.pwBits = await pwBitsFor(p1, kr.pwSalt, kr.iter);
+    const keep = on ? slotsOf(kr, 'pk').find(x => x.credId === pkNow.credId) : null;
+    kr.slots = [];
+    if (on){ kr.slots.push({ ...keep, ...(await wrapDK(await kekFrom([CRYPTO.pwBits, pkNow.prf], 'data/pk'))) }); await addRecSlot(rec); }
+    else kr.slots.push({ type:'pw', ...(await wrapDK(await kekFrom([CRYPTO.pwBits], 'data/pw'))) });
+    await saved('Password changed. Click Save data file, and delete older copies of the data file.');
   };
   $('#s-apply').onclick = async () => {
     st.milestones = $('#s-ms').value.split(/[,\s]+/).map(Number).filter(n => n > 0).sort((a, b) => a - b);
@@ -1551,7 +1718,7 @@ function renderSettings(main){
   $('#s-wipe').onclick = async () => {
     if (!confirm('Delete ALL data from this browser? This cannot be undone. (Backup files you saved are not touched.)')) return;
     if (prompt('Type DELETE to confirm') !== 'DELETE') return;
-    await wipeDevice(); await setFails(0); DB = emptyDB(); CRYPTO.key = null; SKIP_UNLOAD = true; location.hash = '#/updates'; location.reload();
+    await wipeDevice(); await setFails(0); DB = emptyDB(); CRYPTO.dk = null; SKIP_UNLOAD = true; location.hash = '#/updates'; location.reload();
   };
 }
 
@@ -1566,37 +1733,50 @@ function attemptsText(){ const left = MAX_TRIES - getFails(); return `${left} at
 
 // cands: encrypted copies (browser and/or data file), newest first
 function gateUnlock(cands, note){
+  const top = cands[0], kr = top.meta.enc && top.meta.enc.keyring, pk = needsPasskey(kr);
+  const pkHere = pk && canPasskey();
   showGate(`<form class="card gatecard" id="g-form">
     <div class="gateicon">${LOCK_SVG}</div>
     <h1>Data is locked</h1>
-    <p class="muted">${note || 'Enter your password to unlock your data on this device.'}</p>
+    <p class="muted">${note || (pk ? (pkHere ? 'Enter your password, then confirm with your passkey (Face ID, Touch ID or Windows Hello).' : 'This data is protected with a passkey, which only works on the website version of Data (www.yusufmalik.co.uk/data.html). Here you can unlock it with your password and recovery key.') : 'Enter your password to unlock your data on this device.')}</p>
     <input type="password" id="g-pw" autocomplete="current-password" placeholder="Password" aria-label="Password">
-    <button class="pri" type="submit">Unlock</button>
+    <input type="text" id="g-rec" placeholder="Recovery key (XXXX-XXXX-…)" aria-label="Recovery key" autocomplete="off" autocapitalize="characters" spellcheck="false" ${pk && !pkHere ? '' : 'hidden'}>
+    <button class="pri" type="submit" id="g-go">${pkHere ? 'Unlock with passkey' : 'Unlock'}</button>
     <p class="small muted" id="g-msg">${attemptsText()}</p>
+    ${pkHere ? '<p class="small"><a href="#" id="g-userec">Lost your passkey? Use your recovery key</a></p>' : ''}
     <p class="small"><a href="#" id="g-file">Open a data file instead…</a></p>
   </form>`);
   setTimeout(() => $('#g-pw') && $('#g-pw').focus(), 50);
+  let useRec = pk && !pkHere;
   $('#g-file').onclick = pickFileFromGate;
+  if ($('#g-userec')) $('#g-userec').onclick = e => { e.preventDefault(); useRec = !useRec; $('#g-rec').hidden = !useRec; $('#g-go').textContent = useRec ? 'Unlock with recovery key' : 'Unlock with passkey'; e.target.textContent = useRec ? 'Use my passkey instead' : 'Lost your passkey? Use your recovery key'; if (useRec) $('#g-rec').focus(); };
   GATE.onFile = (parsed, name) => parsed.meta.enc
     ? gateUnlock([{ from:'file', meta:parsed.meta, data:parsed.data, time:parsed.meta.savedAt || '' }], `Enter the password for <b>${esc(name)}</b>.`)
     : gateCreate({ from:'file', meta:parsed.meta, data:parsed.data });
+  const say = html => { $('#g-msg').innerHTML = html; };
   $('#g-form').onsubmit = async e => {
-    e.preventDefault(); const pw = $('#g-pw').value; if (!pw) return;
+    e.preventDefault(); const pw = $('#g-pw').value; if (!pw) { $('#g-pw').focus(); return; }
+    let creds = { pw };
+    if (pk){
+      if (useRec){ const rec = $('#g-rec').value; if (normRec(rec).length < 24){ say('<b style="color:var(--neg)">Enter the whole recovery key.</b>'); $('#g-rec').focus(); return; } creds.rec = rec; }
+      else { try { Object.assign(creds, await PK.get(kr)); } catch (err){ say(`<b style="color:var(--neg)">${esc(passkeyErrorText(err))}</b> ${attemptsText()}`); return; } }
+    }
     await busy('Unlocking…');
     let ok = null, other = null;
-    for (const c of cands){
-      try { ok = { c, loaded: await openStore(c.meta, c.data, pw) }; break; }
-      catch (err){ if (!isWrongPassword(err)){ other = err; break; } }
+    // with a passkey or recovery key, only the newest copy is tried; with a password alone, any copy it opens
+    for (const c of (pk ? [top] : cands)){
+      try { ok = { c, loaded: await openStore(c.meta, c.data, creds) }; break; }
+      catch (err){ if (err.name === 'NeedsPasskeyError') continue; if (!isWrongPassword(err)){ other = err; break; } }
     }
-    if (other){ done(); $('#g-msg').innerHTML = `<b style="color:var(--neg)">Couldn’t open:</b> ${esc(other.message)}`; return; }
+    if (other){ done(); say(`<b style="color:var(--neg)">Couldn’t open:</b> ${esc(other.message)}`); return; }
     if (!ok){
       done(); const left = await failedAttempt();
       if (!left){
         const file = cands.find(c => c.from === 'file');
-        const msg = '<b style="color:var(--neg)">Too many wrong passwords.</b> The copy stored on this device has been erased. Your data file is still encrypted.';
+        const msg = '<b style="color:var(--neg)">Too many wrong attempts.</b> The copy stored on this device has been erased. Your data file is still encrypted.';
         return file ? gateUnlock([file], msg) : gateCreate(null, msg);
       }
-      $('#g-msg').innerHTML = `<b style="color:var(--neg)">Wrong password.</b> ${attemptsText()}`;
+      say(`<b style="color:var(--neg)">${pk ? (useRec ? 'Wrong password or recovery key.' : 'Wrong password, or a passkey that doesn’t match.') : 'Wrong password.'}</b> ${attemptsText()}`);
       $('#g-pw').value = ''; $('#g-pw').focus(); return;
     }
     await setFails(0);
@@ -1605,7 +1785,7 @@ function gateUnlock(cands, note){
     STORE.used = c.from;
     const file = cands.find(x => x.from === 'file'); if (c.from === 'browser' && file && file.time < c.time) STORE.older = true;
     await removePlainLeftovers();
-    done(); enterApp([note2, c !== cands[0] ? 'Opened the copy that matches this password — another copy uses a different password.' : '']);
+    done(); enterApp([note2, c !== cands[0] ? 'Opened the copy that matches this password — another copy uses a different password.' : '', creds.rec ? 'Unlocked with your recovery key. Add a new passkey in Data file & settings.' : '']);
   };
 }
 
@@ -1635,7 +1815,7 @@ function gateCreate(plain, note){
     if (pw !== pw2){ msg.innerHTML = '<b style="color:var(--neg)">The two passwords don’t match.</b>'; return; }
     await busy('Encrypting…');
     try {
-      await newKey(pw);
+      await newKeyring(pw);
       let note2 = '';
       if (plain){
         const loaded = plain.db ? plain.db : await decodeBackup(plain.data.buffer.slice(plain.data.byteOffset, plain.data.byteOffset + plain.data.byteLength));
@@ -1651,7 +1831,7 @@ function enterApp(notes){
   hideGate(); renderChrome(); route(); startAutoLock();
   notes = (notes || []).filter(Boolean); if (notes.length) toast(notes.join(' '));
 }
-function lockNow(){ SKIP_UNLOAD = true; CRYPTO.key = null; persistChain.then(() => location.reload()); }
+function lockNow(){ SKIP_UNLOAD = true; CRYPTO.dk = null; CRYPTO.dkRaw = null; CRYPTO.pwBits = null; persistChain.then(() => location.reload()); }
 let lockTimer = null, lastActive = Date.now();
 function startAutoLock(){
   const reset = () => { lastActive = Date.now(); clearTimeout(lockTimer); lockTimer = setTimeout(lockNow, AUTO_LOCK_MIN * 60000); };
