@@ -756,21 +756,15 @@ function render(){
 }
 function grow(el){ el.style.height="auto"; el.style.height = el.scrollHeight+"px"; }
 
-/* Like a spreadsheet: the sheet stays a screenful bigger than wherever you have
-   scrolled to, and shrinks back down when you scroll home again. */
+/* The sheet ends where the pages end. It only grows when something needs the
+   room: a new page, or a drag whose preview spills past the edge. */
 function padCanvas(sc){
   if(!sc) return;
   var inner = sc.querySelector(".mapinner");
   if(!inner) return;
-  var bw = +inner.getAttribute("data-bw") || 0;
-  var bh = +inner.getAttribute("data-bh") || 0;
-  inner.style.minWidth  = Math.max(bw, sc.scrollLeft + sc.clientWidth  + 420) + "px";
-  inner.style.minHeight = Math.max(bh, sc.scrollTop  + sc.clientHeight + 320) + "px";
+  inner.style.minWidth  = (+inner.getAttribute("data-bw") || 0) + "px";
+  inner.style.minHeight = (+inner.getAttribute("data-bh") || 0) + "px";
 }
-app.addEventListener("scroll", function(e){
-  var sc = e.target;
-  if(sc && sc.classList && sc.classList.contains("mapscroll")) padCanvas(sc);
-}, true);
 
 /* Paint the pending colour straight onto the tile so you can see it before Apply. */
 function previewTint(col){
