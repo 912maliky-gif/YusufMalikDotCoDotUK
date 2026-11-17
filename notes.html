@@ -135,8 +135,11 @@ input,textarea,select{font:inherit;color:inherit}
 .corner{grid-column:1;grid-row:1}
 .arm{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
   box-shadow:var(--shadow);padding:8px;display:flex;gap:5px}
-.arm.row{grid-column:2;grid-row:1;flex-direction:row;flex-wrap:wrap;align-items:center;min-height:53px}
-.arm.col{grid-column:1;grid-row:2;flex-direction:column;position:sticky;top:74px;min-height:53px}
+/* both bars stay put while the cards scroll under them; the row bar paints the
+   strip above it so cards don't show through the gap under the top bar */
+.arm.row{grid-column:2;grid-row:1;flex-direction:row;flex-wrap:wrap;align-items:center;min-height:53px;
+  position:sticky;top:74px;z-index:15;box-shadow:var(--shadow),0 -34px 0 0 var(--bg)}
+.arm.col{grid-column:1;grid-row:2;flex-direction:column;position:sticky;top:141px;min-height:53px}
 .armlab{font-size:10px;font-weight:660;letter-spacing:.08em;text-transform:uppercase;
   color:var(--muted);padding:3px 6px;flex:none}
 .arm.col .armlab{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px}
@@ -153,6 +156,7 @@ input,textarea,select{font:inherit;color:inherit}
   .corner{display:none}
   .arm.row,.arm.col,.main{grid-column:1;grid-row:auto}
   .arm.col{flex-direction:row;flex-wrap:wrap;align-items:center;position:static}
+  .arm.row{position:static;box-shadow:var(--shadow)}
   .arm.col .armlab{border-bottom:none;border-right:1px solid var(--line);
     padding:3px 9px 3px 6px;margin:0 3px 0 0}
   .arm.row{order:1}.arm.col{order:2}.main{order:3}
