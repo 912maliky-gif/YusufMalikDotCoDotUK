@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Security: this page is forbidden by the browser from contacting ANY server or loading anything external.
-     connect-src 'none' blocks fetch/XHR/WebSocket/beacons; form-action 'none' blocks form posts; no external scripts, images or fonts. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self' file:; style-src 'unsafe-inline'; img-src data: blob:; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; form-action 'none'; base-uri 'none'">
+     connect-src allows only GitHub's API (to sync the ENCRYPTED data file); everything else is blocked; form-action 'none' blocks form posts; no external scripts, images or fonts. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self' file:; style-src 'unsafe-inline'; img-src data: blob:; font-src 'none'; connect-src https://api.github.com; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Data</title>
 <style>
 :root{
@@ -258,7 +258,7 @@ body.locked #app{visibility:hidden}
    so new features automatically work on old data without re-pasting anything.
    Backups store every top-level DB field, so new things a future version adds (e.g. watchlists) are
    carried in backups automatically. A page never opens data from a NEWER format than it understands. */
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.5';
 // The data file that lives next to Data.html. Browsers won't let a page read a .json file beside it, but they do let it
 // load a script from its own folder (whatever the extension). It's .txt, not .js, because Windows/Edge flags .js downloads as dangerous.
 const STORE_FILE = 'Data-store.txt';
@@ -611,6 +611,117 @@ const PK = {
 const deviceLabel = () => IS_IOS ? (/iPhone/.test(UA) ? 'iPhone' : 'iPad') : /Windows/.test(UA) ? 'Windows' : /Mac/.test(UA) ? 'Mac' : 'This device';
 const passkeyErrorText = e => e && e.name === 'NotAllowedError' ? 'Passkey cancelled or timed out.' : e && e.name === 'InvalidStateError' ? 'That passkey is already set up.' : (e && e.message) || 'Passkey failed.';
 
+// ---------- sync: the encrypted data file kept in a PRIVATE GitHub repository ----------
+// Only the encrypted Data-store.txt is ever sent (the same file Save data file makes). Sync only runs while two-factor
+// is on, so the file can't be opened with a password alone. The GitHub access key is stored inside the encrypted data.
+// Each device remembers the version (sha) it last synced, so changes made on two devices at once are caught.
+const SYNC = { state:'off', msg:'', at:null, busy:false, timer:null, again:false };
+let PENDING_SYNC = null;   // sync settings entered on the lock screen of a new device, applied after unlock
+const syncCfg = () => (DB.sync && DB.sync.repo && DB.sync.token) ? DB.sync : null;
+const syncAllowed = () => !!syncCfg() && needsPasskey(CRYPTO.keyring) && !!CRYPTO.dk;
+const GH = {
+  url: cfg => `https://api.github.com/repos/${cfg.repo}/contents/${encodeURIComponent(cfg.path || STORE_FILE)}`,
+  headers: (cfg, raw) => ({ 'Authorization':'Bearer ' + cfg.token, 'Accept':raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json' }),
+  async error(r){
+    let m = ''; try { m = (await r.json()).message || ''; } catch (e) {}
+    const e = new Error(r.status === 401 ? 'GitHub didn’t accept the access key (expired or mistyped).' : r.status === 403 ? 'The access key isn’t allowed to read/write this repository.' : r.status === 404 ? 'Repository not found — check its name, and that the access key includes it.' : `GitHub error ${r.status}${m ? ': ' + m : ''}`);
+    e.status = r.status; e.ghMessage = m; return e;
+  },
+  async meta(cfg){   // → { sha } or null if the file isn't there yet
+    const r = await fetch(GH.url(cfg), { headers:GH.headers(cfg), cache:'no-store' });
+    if (r.status === 404){ const e = await GH.error(r); if (await GH.repoOk(cfg)) return null; throw e; }
+    if (!r.ok) throw await GH.error(r);
+    return { sha:(await r.json()).sha };
+  },
+  async repoOk(cfg){ const r = await fetch(`https://api.github.com/repos/${cfg.repo}`, { headers:GH.headers(cfg), cache:'no-store' }); return r.ok; },
+  async getText(cfg){
+    const r = await fetch(GH.url(cfg), { headers:GH.headers(cfg, true), cache:'no-store' });
+    if (!r.ok) throw await GH.error(r);
+    return r.text();
+  },
+  async put(cfg, text, sha){   // → new sha; throws { conflict:true } if the file changed since `sha`
+    const body = { message:`Data sync ${new Date().toISOString()}`, content:bytesToB64(utf8(text)) }; if (sha) body.sha = sha;
+    const r = await fetch(GH.url(cfg), { method:'PUT', headers:{ ...GH.headers(cfg), 'Content-Type':'application/json' }, body:JSON.stringify(body) });
+    if (r.status === 409 || r.status === 422){ const e = await GH.error(r); if (r.status === 409 || /sha/i.test(e.ghMessage)) e.conflict = true; throw e; }
+    if (!r.ok) throw await GH.error(r);
+    return (await r.json()).content.sha;
+  },
+};
+function setSync(state, msg){ SYNC.state = state; SYNC.msg = msg || ''; if (state === 'ok') SYNC.at = new Date(); try { if (!GATE.active) renderChrome(); } catch (e) {} }
+function scheduleSync(ms){ if (!syncAllowed()) return; clearTimeout(SYNC.timer); SYNC.timer = setTimeout(() => syncNow(), ms == null ? 2500 : ms); }
+// asks for this data's password (+ passkey) when the other device's copy uses different keys (e.g. password changed there)
+async function credsFor(kr, why){
+  const pw = await askPassword(why); if (pw == null) return null;
+  const creds = { pw };
+  if (needsPasskey(kr)){ if (!canPasskey()) throw new Error('Use the website version of Data to confirm with your passkey.'); Object.assign(creds, await PK.get(kr)); }
+  return creds;
+}
+async function adoptRemote(cfg, sha, text){
+  const parsed = parseStoreFile(utf8(text).buffer);
+  let creds = null;
+  if (parsed.meta.enc && !sameKeyring(parsed.meta.enc)){
+    creds = await credsFor(parsed.meta.enc.keyring, 'Your data was changed on another device with a different password. Enter the current password to open it.');
+    if (!creds) throw new Error('Not opened — sync paused.');
+  }
+  let loaded;
+  try { loaded = await openStore(parsed.meta, parsed.data, creds); }
+  catch (e) { if (isWrongPassword(e)){ const left = await failedAttempt(); if (!left){ SKIP_UNLOAD = true; location.reload(); } throw new Error(`That didn’t work. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); } throw e; }
+  await setFails(0);
+  loaded.sync = { ...cfg, sha };
+  await adoptLoaded(loaded, parsed.meta.savedAt, parsed.meta.savedAt);
+  if (!GATE.active) route();
+}
+async function syncNow(){
+  if (!syncAllowed()){ setSync(syncCfg() ? 'paused' : 'off'); return; }
+  if (SYNC.busy){ SYNC.again = true; return; }
+  SYNC.busy = true; setSync('syncing', 'Syncing…');
+  let retry = false;
+  try {
+    const cfg = syncCfg();
+    const remote = await GH.meta(cfg);
+    const remoteChanged = !!remote && remote.sha !== cfg.sha;
+    if (remoteChanged && DB.snapshots.length && (isDirty() || !cfg.sha)){
+      // both this device and another one changed the data since they last synced (or this device is joining with its own data)
+      const choice = await chooseConflict();
+      if (choice === 'theirs') await adoptRemote(cfg, remote.sha, await GH.getText(cfg));
+      else if (choice === 'mine') await upload(cfg, remote.sha);
+      else { setSync('error', 'Sync paused: data changed on two devices.'); return; }
+    } else if (remoteChanged){
+      await adoptRemote(cfg, remote.sha, await GH.getText(cfg));
+      toast('Updated with the latest data from GitHub.');
+    } else if (isDirty() || (!remote && DB.snapshots.length)){
+      await upload(cfg, remote ? remote.sha : null);
+    }
+    setSync('ok');
+  } catch (e) {
+    console.error(e);
+    if (e.conflict) retry = true;   // someone saved in between: look again
+    else setSync('error', e.message || 'Sync failed');
+  } finally {
+    SYNC.busy = false;
+    if (retry || SYNC.again){ SYNC.again = false; scheduleSync(retry ? 50 : 500); }
+  }
+}
+async function upload(cfg, sha){
+  const { blob, savedAt } = await encodeStoreFile();
+  const newSha = await GH.put(cfg, await blob.text(), sha);
+  DB.sync = { ...cfg, sha:newSha }; DB.savedAt = savedAt;
+  await persist();
+}
+function chooseConflict(){
+  return new Promise(res => {
+    const d = document.createElement('div'); d.id = 'pwmodal';
+    d.innerHTML = `<div class="card gatecard"><h3>Changed on two devices</h3>
+      <p class="muted" style="margin-top:0">Your data was changed on another device since this one last synced, and this device has changes that haven’t synced yet. Which version should be kept?</p>
+      <div class="row"><button class="pri" data-c="theirs">Use the other device’s version</button><button data-c="mine">Keep this device’s version</button></div>
+      <p class="muted small" style="margin:0">The version not chosen is still in your GitHub history, and you can add any missing weeks again.</p>
+      <div class="row"><button data-c="later">Decide later</button></div></div>`;
+    document.body.appendChild(d);
+    $$('[data-c]', d).forEach(b => b.onclick = () => { d.remove(); res(b.dataset.c); });
+  });
+}
+const cleanRepo = s => String(s || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/, '').replace(/\/+$/, '');
+
 // wrong-password counter, kept per device (in two places so it isn't trivially reset)
 let FAILS_IDB = 0;
 function getFails(){ let n = 0; try { n = +localStorage.getItem('data-fails') || 0; } catch (e) {} return Math.max(n, FAILS_IDB || 0); }
@@ -634,6 +745,7 @@ async function doPersist(){
     const { blob } = await encodeBackup();
     const sealed = await sealBytes(new Uint8Array(await blob.arrayBuffer()));
     await IDB.put('vault', { enc:sealed.enc, ct:sealed.ct, savedAt:DB.savedAt, changedAt:DB.changedAt, schema:SCHEMA, appVersion:APP_VERSION });
+    if (isDirty()) scheduleSync();
   } catch (e) { console.error(e); toast('Could not save in the browser — please Save data file'); }
 }
 async function adoptLoaded(loaded, savedAt, changedAt){
@@ -1030,12 +1142,22 @@ function renderChrome(){
   box.className = dirty ? 'dirty' : '';
   let html = '';
   if (!IDB.ok) html += `<div style="color:var(--neg);margin-bottom:6px"><b>Browser storage is off.</b> Your data comes from ${STORE_FILE} — save the data file before closing.</div>`;
-  if (!DB.snapshots.length) html += 'No data yet.';
+  const syncing = !!syncCfg();
+  if (syncing){
+    const t = SYNC.at ? `${pad2(SYNC.at.getHours())}:${pad2(SYNC.at.getMinutes())}` : '';
+    box.className = (SYNC.state === 'error' || SYNC.state === 'paused') ? 'dirty' : '';
+    html += SYNC.state === 'syncing' ? 'Syncing with GitHub…'
+      : SYNC.state === 'error' ? `<b>Sync problem</b><br>${esc(SYNC.msg)}<button id="btn-resync">Try again</button>`
+      : SYNC.state === 'paused' ? '<b>Sync paused</b><br>Turn on two-factor to sync.'
+      : dirty ? 'Waiting to sync…'
+      : `<span style="color:var(--pos)">✓</span> Synced${t ? ' ' + t : ''}`;
+  }
+  else if (!DB.snapshots.length) html += 'No data yet.';
   else if (dirty) html += `<b>Not saved to ${STORE_FILE}</b><br>Changes since ${DB.savedAt ? fmtISO(DB.savedAt.slice(0, 10)) : 'you started'}.`;
   else html += `Data file saved ${fmtISO(DB.savedAt.slice(0, 10))} ${DB.savedAt.slice(11, 16)}`;
-  html += `<button class="${dirty ? 'pri' : ''}" id="btn-save" ${DB.snapshots.length ? '' : 'disabled'}>Save data file</button>`;
+  html += `<button class="${dirty && !syncing ? 'pri' : ''}" id="btn-save" ${DB.snapshots.length ? '' : 'disabled'}>Save data file</button>`;
   html += `<button id="btn-lock" title="Locks Data now. It also locks itself after ${AUTO_LOCK_MIN} minutes without use.">Lock</button>`;
-  box.innerHTML = html; $('#btn-save').onclick = saveBackup; $('#btn-lock').onclick = lockNow;
+  box.innerHTML = html; $('#btn-save').onclick = saveBackup; $('#btn-lock').onclick = lockNow; if ($('#btn-resync')) $('#btn-resync').onclick = () => syncNow();
   $('#appver').textContent = 'v' + APP_VERSION;
   $('#topmeta').textContent = D && D.S ? `${D.S} week${D.S > 1 ? 's' : ''} · ${fmtISO(DB.snapshots[0].date)} – ${fmtISO(DB.snapshots[D.S - 1].date)} · ${fmtN(DB.snapshots[D.S - 1].rows)} people` : '';
 }
@@ -1618,6 +1740,26 @@ function renderSettings(main){
       </div>
       <p class="muted small" style="margin-bottom:0">After any change here, click Save data file and delete older copies of ${STORE_FILE} — they still open the old way.</p>
     </div>
+    <div class="card" id="synccard"><h3>Sync between devices (private GitHub repository)</h3>
+      ${(() => { const cfg = syncCfg(), on2fa = needsPasskey(CRYPTO.keyring);
+        return `<p style="margin-top:0">Keeps your <b>encrypted</b> data file in a private GitHub repository, so every device you unlock gets the latest data. Only the encrypted file is ever sent. Sync only works while two-factor is on.</p>
+        ${!on2fa ? '<div class="notice warn">Turn on two-factor above first — sync is only allowed with password + passkey.</div>' : ''}
+        ${cfg ? `<p>Status: <b>${SYNC.state === 'ok' ? 'synced' + (SYNC.at ? ' ' + pad2(SYNC.at.getHours()) + ':' + pad2(SYNC.at.getMinutes()) : '') : SYNC.state === 'error' ? 'problem — ' + esc(SYNC.msg) : SYNC.state === 'paused' ? 'paused (two-factor is off)' : SYNC.state}</b> · repository <b>${esc(cfg.repo)}</b></p>` : '<p class="muted">Sync is off on this data.</p>'}
+        <div class="row">
+          <input type="text" id="sy-repo" placeholder="your-github-name/data-vault" value="${esc(cfg ? cfg.repo : '')}" style="flex:1;min-width:200px" autocapitalize="off" spellcheck="false">
+          <input type="password" id="sy-token" placeholder="${cfg ? 'Access key (saved — type a new one to replace it)' : 'GitHub access key (github_pat_…)'}" style="flex:1;min-width:220px" autocomplete="off">
+          <button class="pri" id="sy-save" ${on2fa ? '' : 'disabled'}>${cfg ? 'Save & sync now' : 'Turn on sync'}</button>
+          ${cfg ? '<button class="danger" id="sy-off">Turn off sync</button>' : ''}
+        </div>
+        <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">How to make the access key</summary>
+          <ol class="muted" style="margin:8px 0 0;padding-left:20px">
+            <li>On github.com: your picture → <b>Settings</b> → <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Fine-grained tokens</b> → <b>Generate new token</b>.</li>
+            <li>Name it “Data sync”. Expiration: up to a year (you’ll paste a new one when it expires).</li>
+            <li><b>Repository access</b> → <b>Only select repositories</b> → choose <b>data-vault</b> only.</li>
+            <li><b>Permissions</b> → Repository permissions → <b>Contents: Read and write</b>. Nothing else.</li>
+            <li>Generate, copy the key, paste it here. Keep it in Apple Passwords too, for setting up other devices.</li>
+          </ol></details>`; })()}
+    </div>
     <div class="card"><h3>Version</h3>
       <p style="margin-top:0">This is <b>Data v${APP_VERSION}</b> (data format ${SCHEMA}).</p>
       <p class="muted" style="margin:0 0 6px"><b>Moving to a new version of Data.html:</b></p>
@@ -1687,6 +1829,23 @@ function renderSettings(main){
     kr.slots = kr.slots.filter(x => !(x.type === 'pk' && x.credId === btn.dataset.rmpk));
     await busy('Saving…'); await saved('Passkey removed from Data. (You can also delete it in Apple Passwords / your device settings.)');
   });
+  if ($('#sy-save')) $('#sy-save').onclick = async () => {
+    const repo = cleanRepo($('#sy-repo').value), tokIn = $('#sy-token').value.trim();
+    const old = syncCfg(); const token = tokIn || (old && old.token);
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)){ alert('Enter the repository as name/repository, e.g. your-github-name/data-vault.'); return; }
+    if (!token){ alert('Paste your GitHub access key.'); return; }
+    await busy('Checking GitHub…');
+    const cfg = { repo, token, path:STORE_FILE, sha:(old && old.repo === repo) ? old.sha : null };
+    try { if (!(await GH.repoOk(cfg))) throw new Error('Couldn’t reach that repository with this key — check the name and the key’s repository access.'); }
+    catch (e) { done(); alert(e.message); return; }
+    DB.sync = cfg; await persist(); done(); renderSettings(main); $('#synccard').scrollIntoView({ block:'center' });
+    await syncNow(); renderSettings(main); $('#synccard').scrollIntoView({ block:'center' });
+    if (SYNC.state === 'ok') toast('Sync is on. Your encrypted data is in ' + repo + '.');
+  };
+  if ($('#sy-off')) $('#sy-off').onclick = async () => {
+    if (!confirm('Turn off sync on this data? Devices stop sending and receiving changes. (The encrypted file already in GitHub stays there until you delete it.)')) return;
+    delete DB.sync; markChanged(); await persist(); setSync('off'); renderSettings(main); toast('Sync turned off.');
+  };
   $('#s-pwgo').onclick = async () => {
     const p0 = $('#s-pw0').value, p1 = $('#s-pw1').value, p2 = $('#s-pw2').value;
     if (p1.length < 10){ alert('Use at least 10 characters for the new password.'); return; }
@@ -1776,7 +1935,7 @@ function gateUnlock(cands, note){
       if (!left){
         const file = cands.find(c => c.from === 'file');
         const msg = '<b style="color:var(--neg)">Too many failed attempts.</b> The copy stored on this device has been erased. Your data file is still encrypted.';
-        return file ? gateUnlock([file], msg) : gateCreate(null, msg);
+        return file ? gateUnlock([file], msg) : gateWelcome(msg);
       }
       say(`<b style="color:var(--neg)">Unlock failed.</b> ${attemptsText()}`);   // never says which part was wrong
       $('#g-pw').value = ''; $('#g-pw').focus(); return;
@@ -1791,6 +1950,25 @@ function gateUnlock(cands, note){
   };
 }
 
+// a device with no data yet: lead with getting existing data, not with making a new password
+function gateWelcome(note){
+  showGate(`<div class="card gatecard">
+    <div class="gateicon">${LOCK_SVG}</div>
+    <h1>Welcome to Data</h1>
+    <p class="muted">There’s no data on this device yet.</p>
+    ${note ? `<p class="small">${note}</p>` : ''}
+    <button class="pri" id="w-sync">Get my data from GitHub sync</button>
+    <button id="w-file">Open a data file…</button>
+    <p class="small muted" style="margin-top:6px">First time using Data? <a href="#" id="w-new">Start fresh with a new password</a></p>
+  </div>`);
+  $('#w-sync').onclick = () => gateSync();
+  $('#w-file').onclick = pickFileFromGate;
+  $('#w-new').onclick = e => { e.preventDefault(); gateCreate(null); };
+  GATE.onFile = (parsed, name) => parsed.meta.enc
+    ? gateUnlock([{ from:'file', meta:parsed.meta, data:parsed.data, time:parsed.meta.savedAt || '' }], `Enter the password for <b>${esc(name)}</b>.`)
+    : gateCreate({ from:'file', meta:parsed.meta, data:parsed.data });
+}
+
 // first run (or after unencrypted data from an older version): choose a password
 function gateCreate(plain, note){
   showGate(`<form class="card gatecard" id="g-form">
@@ -1803,13 +1981,10 @@ function gateCreate(plain, note){
     <div class="notice warn small" style="text-align:left">There is no “forgot password”. If it’s lost, nobody can open the data. Keep it somewhere safe, such as a password manager.</div>
     <button class="pri" type="submit">${plain ? 'Encrypt my data' : 'Set password'}</button>
     <p class="small" id="g-msg"></p>
-    ${plain ? '' : '<p class="small"><a href="#" id="g-file">I already have a data file…</a></p>'}
+    ${plain ? '' : '<p class="small"><a href="#" id="g-back">Back</a></p>'}
   </form>`);
+  if ($('#g-back')) $('#g-back').onclick = e => { e.preventDefault(); gateWelcome(); };
   setTimeout(() => $('#g-pw') && $('#g-pw').focus(), 50);
-  if ($('#g-file')) $('#g-file').onclick = pickFileFromGate;
-  GATE.onFile = (parsed, name) => parsed.meta.enc
-    ? gateUnlock([{ from:'file', meta:parsed.meta, data:parsed.data, time:parsed.meta.savedAt || '' }], `Enter the password for <b>${esc(name)}</b>.`)
-    : gateCreate({ from:'file', meta:parsed.meta, data:parsed.data });
   $('#g-form').onsubmit = async e => {
     e.preventDefault();
     const pw = $('#g-pw').value, pw2 = $('#g-pw2').value, msg = $('#g-msg');
@@ -1829,8 +2004,42 @@ function gateCreate(plain, note){
   };
 }
 
+// new device: fetch the encrypted data file from the private GitHub repository, then unlock it
+function gateSync(note){
+  showGate(`<form class="card gatecard" id="g-form">
+    <div class="gateicon">${LOCK_SVG}</div>
+    <h1>Get my data</h1>
+    <p class="muted">Enter your sync repository and GitHub access key (you saved it in Apple Passwords when you set up sync).</p>
+    ${note ? `<p class="small">${note}</p>` : ''}
+    <input type="text" id="g-repo" placeholder="your-github-name/data-vault" autocapitalize="off" spellcheck="false" aria-label="Repository">
+    <input type="password" id="g-tok" placeholder="GitHub access key" autocomplete="off" aria-label="GitHub access key">
+    <button class="pri" type="submit">Get my data</button>
+    <p class="small" id="g-msg"></p>
+    <p class="small"><a href="#" id="g-back">Back</a></p>
+  </form>`);
+  setTimeout(() => $('#g-repo') && $('#g-repo').focus(), 50);
+  $('#g-back').onclick = e => { e.preventDefault(); gateWelcome(); };
+  $('#g-form').onsubmit = async e => {
+    e.preventDefault();
+    const cfg = { repo:cleanRepo($('#g-repo').value), token:$('#g-tok').value.trim(), path:STORE_FILE }, msg = $('#g-msg');
+    if (!/^[\w.-]+\/[\w.-]+$/.test(cfg.repo) || !cfg.token){ msg.innerHTML = '<b style="color:var(--neg)">Enter both the repository and the access key.</b>'; return; }
+    await busy('Fetching from GitHub…');
+    try {
+      const m = await GH.meta(cfg);
+      if (!m){ done(); msg.innerHTML = '<b style="color:var(--neg)">There’s no data in that repository yet.</b> Turn on sync on the device that has your data first.'; return; }
+      const parsed = parseStoreFile(utf8(await GH.getText(cfg)).buffer); done();
+      if (!parsed.meta.enc){ msg.textContent = 'That file isn’t encrypted — not opened.'; return; }
+      PENDING_SYNC = { ...cfg, sha:m.sha };
+      gateUnlock([{ from:'file', meta:parsed.meta, data:parsed.data, time:parsed.meta.savedAt || '' }], 'Got your encrypted data from GitHub. Unlock it with your password and passkey.');
+    } catch (err) { done(); msg.innerHTML = `<b style="color:var(--neg)">${esc(err.message)}</b>`; }
+  };
+}
+
 function enterApp(notes){
+  if (PENDING_SYNC && CRYPTO.dk){ DB.sync = { ...(DB.sync || {}), ...PENDING_SYNC }; PENDING_SYNC = null; persist(); }
   hideGate(); renderChrome(); route(); startAutoLock();
+  if (syncCfg()) setTimeout(syncNow, 300);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !GATE.active) scheduleSync(200); });
   notes = (notes || []).filter(Boolean); if (notes.length) toast(notes.join(' '));
 }
 function lockNow(){ SKIP_UNLOAD = true; CRYPTO.dk = null; CRYPTO.dkRaw = null; CRYPTO.pwBits = null; persistChain.then(() => location.reload()); }
@@ -1867,7 +2076,7 @@ function startAutoLock(){
   if (cands.length) return gateUnlock(cands);
   // unencrypted data from an older version (browser copy or data file): encrypt it with a new password
   const plain = legacy ? { from:'browser', db:legacy } : (FS ? { from:'file', meta:FS, data:b64ToBytes(FS.b64) } : null);
-  gateCreate(plain);
+  plain ? gateCreate(plain) : gateWelcome();
 })();
 </script>
 </body>
