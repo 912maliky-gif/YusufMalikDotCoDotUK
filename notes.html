@@ -558,6 +558,10 @@ function ensureDirs(n){
    pushes its neighbours out of the way instead of colliding with them. */
 var DIR_ORDER = ["down","up","right","left"];
 
+/* Clean up lays the map out a second way: no branch may tuck in under or over
+   another, so a page never sits straight above one it isn't connected to. */
+var STRICT_LAYOUT = false;
+
 function relayout(n){
   ensureDirs(n);
   n.pages.forEach(function(q){
@@ -576,9 +580,19 @@ function relayout(n){
     var cells = {}, pos = {};
 
     function fits(sub, ox, oy){
+      var ax = Infinity, bx = -Infinity, ay = Infinity, by = -Infinity;
       for(var k in sub.cells){
-        var c = k.indexOf(",");
-        if(cells[(+k.slice(0,c)+ox) + "," + (+k.slice(c+1)+oy)]) return false;
+        var c = k.indexOf(","), x = +k.slice(0,c)+ox, y = +k.slice(c+1)+oy;
+        if(cells[x + "," + y]) return false;
+        if(x < ax) ax = x; if(x > bx) bx = x; if(y < ay) ay = y; if(y > by) by = y;
+      }
+      if(!STRICT_LAYOUT) return true;
+      /* nothing else in the columns this branch uses, on its rows or the row
+         either side of them (its own parent excepted) */
+      for(var k2 in cells){
+        if(cells[k2] === id) continue;
+        var c2 = k2.indexOf(","), x2 = +k2.slice(0,c2), y2 = +k2.slice(c2+1);
+        if(x2 >= ax && x2 <= bx && y2 >= ay - 1 && y2 <= by + 1) return false;
       }
       return true;
     }
@@ -829,6 +843,49 @@ function rehangOptions(n, p){
   });
   return out;
 }
+/* Slide everything (with the arrow nudges, so nothing about who hangs from whom
+   changes) to where the strict layout would put it. Any earlier nudges go. */
+function cleanUp(n){
+  var copy = JSON.parse(JSON.stringify(n));
+  STRICT_LAYOUT = true;
+  try{ relayout(copy); } finally { STRICT_LAYOUT = false; }
+  var tx = {}, ty = {};
+  copy.pages.forEach(function(q){ tx[q.id] = q.x; ty[q.id] = q.y; });
+  n.pages.forEach(function(q){ q.xoff = 0; });
+  relayout(n);
+  var pm = parentOf(n), cm = childrenOf(n), byId = {};
+  n.pages.forEach(function(q){ byId[q.id] = q; });
+  var queue = n.pages.filter(function(q){ return !pm[q.id] || !byId[pm[q.id]]; });
+  var shift = {}, lift = {}, seen = {}, rank = {}, nth = 0;
+  queue.forEach(function(r){ shift[r.id] = r.x - tx[r.id]; lift[r.id] = r.y - ty[r.id]; });
+  /* top down and left to right, so each page sees its parents' and older
+     sisters' nudges before working out its own */
+  while(queue.length){
+    var q = queue.shift();
+    if(seen[q.id]) continue;
+    seen[q.id] = 1;
+    rank[q.id] = nth++;
+    if(!(q.id in shift)){ shift[q.id] = shift[pm[q.id]]; lift[q.id] = lift[pm[q.id]]; }
+    if(ty[q.id] + lift[q.id] === q.y && tx[q.id] !== undefined){
+      var off = tx[q.id] + shift[q.id] - visX(q);
+      if(off) q.xoff = (q.xoff || 0) + off;
+    }
+    (cm[q.id] || []).forEach(function(k){ if(byId[k]) queue.push(byId[k]); });
+  }
+  /* a page the tidy pass wanted on another row can't get there with a nudge,
+     so it may now share a square: step the later of the two along until clear */
+  var later = function(a, b){ return (rank[a.id] === undefined ? 1e9 : rank[a.id]) > (rank[b.id] === undefined ? 1e9 : rank[b.id]) ? a : b; };
+  for(var guard = 0; guard < 1000; guard++){
+    var spots = {}, hit = null;
+    for(var i = 0; i < n.pages.length && !hit; i++){
+      var p = n.pages[i], key = visX(p) + "," + p.y;
+      if(spots[key]) hit = later(p, spots[key]); else spots[key] = p;
+    }
+    if(!hit) break;
+    hit.xoff = (hit.xoff || 0) + 1;
+  }
+}
+
 function rehangLabel(o){
   return (o.kind === "chain" ? "Sibling of " : "Child of ") + o.parent.title;
 }
@@ -1103,6 +1160,7 @@ function helpHTML(){
         ["Grip, bottom right","drag to reorder; a preview shows the result before you let go"],
         ["Hold \u2318 / Ctrl while dragging","move just that page, leaving its children behind"],
         ["\u2194 arrows","nudge a page sideways. Purely visual \u2014 nothing changes parent"],
+        ["Right-click \u2192 Clean up","spread the map out so no page sits over or under one it isn't connected to. Replaces any \u2194 nudges"],
         ["<span class=\"helpicon\">"+PEOPLE_ICON+"</span> people icon","switch a page between being a sibling chained beside the page next to it, a child of the page its row hangs from, or a child of the page sitting straight above it"],
         ["Esc","cancel a drag"]
       ])
@@ -2387,9 +2445,22 @@ app.addEventListener("click", function(e){
   render();
 });
 
+function cleanUpItem(n, i){
+  return { i:i, label:"Clean up", run:function(){
+    pushUndo(); cleanUp(n); save(); render();
+  } };
+}
 app.addEventListener("contextmenu", function(e){
   var el = e.target.closest(".node");
-  if(!el || e.target.closest(".handle")) return;
+  if(!el){
+    /* the empty map: just the tidy-up */
+    var sc = e.target.closest(".mapscroll"), mn = sc && note(view.note);
+    if(!mn) return;
+    e.preventDefault();
+    openMenu(e.clientX, e.clientY, [cleanUpItem(mn, 0)]);
+    return;
+  }
+  if(e.target.closest(".handle")) return;
   e.preventDefault();
   var c = ctx(el);
   if(!c.n || !c.p) return;
@@ -2400,7 +2471,8 @@ app.addEventListener("contextmenu", function(e){
         pushUndo(); editingPageId = pg.id; editStartTitle = pg.title;
         pendingColour = undefined; render();
       } },
-    { i:2, label:"Delete", danger:true, run:function(){ confirmDeletePage(n, pg); } }
+    cleanUpItem(n, 2),
+    { i:3, label:"Delete", danger:true, run:function(){ confirmDeletePage(n, pg); } }
   ]);
 });
 
