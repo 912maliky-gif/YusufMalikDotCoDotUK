@@ -772,17 +772,59 @@ function rehangOption(n, p){
   }
   return {kind:"chain", parent:end, dir:side};
 }
-function rehang(n, p){
-  var o = rehangOption(n, p);
+/* Everything this page could switch to, worked out from what sits around it on
+   the map rather than from where it hangs now, so you can always switch back:
+   a sibling of the page beside it, a child of the page that row hangs from, or
+   a child of the page straight above it. */
+function rehangOptions(n, p){
+  var pm = parentOf(n), out = [];
+  if(!pm[p.id]) return out;
+  var flat = function(q){ return q.dir === "left" || q.dir === "right"; };
+  var mine = function(q){                        /* p itself or hanging off it */
+    for(var a = q, g = 0; a && g++ < 999; a = a._par) if(a === p) return true;
+    return false;
+  };
+  var vx = visX(p), L = null, R = null;
+  n.pages.forEach(function(q){
+    if(q.y !== p.y || mine(q)) return;
+    var v = visX(q);
+    if(v < vx && (!L || v > visX(L))) L = q;
+    if(v > vx && (!R || v < visX(R))) R = q;
+  });
+  function offer(o){
+    if(o.parent.id === pm[p.id] && o.dir === p.dir) return;      /* where it is now */
+    for(var i=0;i<out.length;i++) if(out[i].parent === o.parent && out[i].dir === o.dir) return;
+    out.push(o);
+  }
+  var nb = L || R;
+  if(nb){
+    offer({kind:"chain", parent:nb, dir: L ? "right" : "left"});
+    var head = nb, g = 0;
+    while(flat(head) && pm[head.id] && page(n, pm[head.id]) && g++ < 999) head = page(n, pm[head.id]);
+    var from = !flat(head) && pm[head.id] && page(n, pm[head.id]);
+    if(from && !mine(from)) offer({kind:"hang", parent:from, beside:head, dir:head.dir});
+  }
+  n.pages.forEach(function(q){
+    if(q.y === p.y - 1 && visX(q) === vx && !mine(q)) offer({kind:"under", parent:q, dir:"down"});
+  });
+  return out;
+}
+function rehangLabel(o){
+  return (o.kind === "chain" ? "Sibling of " : "Child of ") + o.parent.title;
+}
+
+function rehang(n, p, o){
   if(!o) return false;
-  var pm = parentOf(n);
+  var pm = parentOf(n), oldPar = page(n, pm[p.id]);
+  var wasOld = oldPar ? visX(oldPar) : 0, wasNew = visX(o.parent);
+  var leftOfHead = o.beside && visX(p) < visX(o.beside);
   n.edges = n.edges.filter(function(e){ return !(e[0] === pm[p.id] && e[1] === p.id); });
   var edge = [o.parent.id, p.id], at = n.edges.length;
   if(o.kind === "hang"){
-    /* sit next to the sibling whose chain it came from, so the row reads the same */
+    /* sit next to the sibling whose row it is joining, on the side it was on */
     for(var k=0;k<n.edges.length;k++){
       if(n.edges[k][0] === o.parent.id && n.edges[k][1] === o.beside.id){
-        at = (p.dir === "left") ? k : k + 1;
+        at = leftOfHead ? k : k + 1;
         break;
       }
     }
@@ -790,6 +832,13 @@ function rehang(n, p){
   n.edges.splice(at, 0, edge);
   p.dir = o.dir;
   relayout(n);
+  /* the pages it leaves and joins stay where they were; only this one moves */
+  [[oldPar, wasOld], [o.parent, wasNew]].forEach(function(pair){
+    var q = pair[0];
+    if(!q) return;
+    var drift = visX(q) - pair[1];
+    if(drift) q.xoff = (q.xoff || 0) - drift;
+  });
   return true;
 }
 
@@ -1033,7 +1082,7 @@ function helpHTML(){
         ["Grip, bottom right","drag to reorder; a preview shows the result before you let go"],
         ["Hold \u2318 / Ctrl while dragging","move just that page, leaving its children behind"],
         ["\u2194 arrows","nudge a page sideways. Purely visual \u2014 nothing changes parent"],
-        ["<span class=\"helpicon\">"+PEOPLE_ICON+"</span> people icon","make a page chained on beside another a child of the page above it, and back again"],
+        ["<span class=\"helpicon\">"+PEOPLE_ICON+"</span> people icon","switch a page between being a sibling chained beside the page next to it, a child of the page its row hangs from, or a child of the page sitting straight above it"],
         ["Esc","cancel a drag"]
       ])
     + sec("Inside a page", [
@@ -1419,12 +1468,12 @@ function viewNote(){
       + '<span class="nc">'+(count? count+' card'+(count===1?"":"s") : "empty")
         + (allDone ? '<span class="donetag">\u2713 done</span>' : "")+'</span>'
       + (function(){
-          var o = rehangOption(n, p);
-          if(!o) return "";
+          var opts = rehangOptions(n, p);
+          if(!opts.length) return "";
           return '<button class="rehang" data-act="rehang" data-note="'+n.id+'" data-page="'+p.id+'"'
-            + ' title="'+esc(o.kind === "hang"
-                ? "Make this a child of " + o.parent.title
-                : "Chain this on beside " + o.parent.title)+'">'
+            + ' title="'+esc(opts.length === 1
+                ? "Make this a " + rehangLabel(opts[0]).charAt(0).toLowerCase() + rehangLabel(opts[0]).slice(1)
+                : "Change what this page hangs from")+'">'
             + PEOPLE_ICON + '</button>';
         })()
       + (canNudge(n, p)
@@ -2233,9 +2282,21 @@ app.addEventListener("click", function(e){
     case "askDelPage": confirmDeletePage(c.n, c.p); return;
 
     case "rehang":
-      pushUndo();
-      if(!rehang(c.n, c.p)) return;
-      save(); break;
+      var ropts = rehangOptions(c.n, c.p);
+      if(!ropts.length) return;
+      if(ropts.length === 1){ pushUndo(); rehang(c.n, c.p, ropts[0]); save(); break; }
+      /* more than one way to go: list them, with where it hangs now ticked */
+      var rn = c.n, rp = c.p, rr = el.getBoundingClientRect();
+      var rcur = page(rn, parentOf(rn)[rp.id]);
+      var ritems = [{i:0, label:"\u2713 " + ((rp.dir === "left" || rp.dir === "right")
+          ? "Sibling of " : "Child of ") + rcur.title, run:function(){}}]
+        .concat(ropts.map(function(o, k){
+          return {i:k+1, label:rehangLabel(o), run:function(){
+            pushUndo(); rehang(rn, rp, o); save(); render();
+          }};
+        }));
+      setTimeout(function(){ openMenu(rr.left, rr.bottom + 4, ritems); }, 0);
+      return;
 
     case "addPage":
       pushUndo();
