@@ -871,6 +871,7 @@ function deletePage(n, id){
 var app = document.getElementById("app");
 
 function render(){
+  try{ sessionStorage.setItem("notes.view", JSON.stringify(view)); }catch(e){}
   /* a redraw rebuilds the map box; keep it scrolled where you left it */
   var oldSc = app.querySelector(".mapscroll");
   var keepScroll = oldSc && view.v === "note" && oldSc.getAttribute("data-note") === view.note
@@ -2619,6 +2620,14 @@ window.addEventListener("beforeunload", function(e){
 
 document.documentElement.setAttribute("data-theme", resolvedTheme());
 db.notes.forEach(function(n){ relayout(n); });
+/* a refresh puts you back on the note or page you were on, if it still exists */
+try{
+  var lastView = JSON.parse(sessionStorage.getItem("notes.view") || "null");
+  if(lastView && lastView.note && note(lastView.note)){
+    if(lastView.v === "page" && lastView.page && page(note(lastView.note), lastView.page)) view = lastView;
+    else view = {v:"note", note:lastView.note};
+  }
+}catch(e){}
 render();
 </script>
 </body>
