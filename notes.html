@@ -647,6 +647,7 @@ function relayout(n){
   n.pages.forEach(function(p){        /* nothing ever gets dropped */
     if(!seen[p.id]){ p.x = 0; p.y = cursor; cursor += 2; seen[p.id] = 1; }
   });
+  linkParents(n);
 }
 
 function addPage(n, from, dir){
@@ -1212,7 +1213,26 @@ function viewFront(){
 var W=190, H=90, GX=60, GY=48, PAD=22;
 var mapMinX=0, mapMinY=0;
 /* the sideways nudge is drawing-only: it never touches structure or packing */
-function visX(p){ return p.x + (p.xoff || 0); }
+function visX(p){
+  /* a nudge carries everything chained on beside it, so pages to the right of a
+     tile you slide right go along with it instead of being slid under */
+  var off = 0, q = p, g = 0;
+  while(q && g++ < 999){
+    off += q.xoff || 0;
+    if(q.dir !== "left" && q.dir !== "right") break;
+    q = q._par;
+  }
+  return p.x + off;
+}
+/* each page knows its parent for visX; hidden so it is never saved */
+function linkParents(n){
+  var pm = parentOf(n), byId = {};
+  n.pages.forEach(function(p){ byId[p.id] = p; });
+  n.pages.forEach(function(p){
+    Object.defineProperty(p, "_par", {value:byId[pm[p.id]] || null,
+      writable:true, configurable:true, enumerable:false});
+  });
+}
 var PALETTE = [
   "#e79190","#eeaf78","#e9d484","#a5cf9f","#96bfe3","#bea3da",   /* basics */
   "#fadcdb","#fbe7d3","#faf2ce","#dcefd6","#dcebf7","#e9dff4"    /* pastels */
@@ -1719,6 +1739,7 @@ function paintPreview(){
   }
   var pv = previewOf(drag.n, drag.p, drag.slot);
   if(!pv){ layer.innerHTML = ""; return; }
+  linkParents(pv);
   drag.inner.classList.add("previewing");
 
   var xs = pv.pages.map(visX), ys = pv.pages.map(function(q){ return q.y; });
