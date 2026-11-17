@@ -691,8 +691,8 @@ function axis(n, p, kind){
     return row.sort(function(a,b){ return visX(a) - visX(b); });
   }
   /* a column is a lineage: the pages stacked above that you hang from, and the
-     ones hanging straight beneath you. A parent that has been centred over
-     several children is still the top of each child's column. */
+     ones hanging beneath you. A parent that has been centred over several
+     children is still the top of each child's column. */
   var pmap = parentOf(n), cmap = childrenOf(n);
   var upright = function(q){ return q.dir === "up" || q.dir === "down"; };
   var col = [p], got = {};
@@ -704,16 +704,15 @@ function axis(n, p, kind){
     got[top.id] = 1;
     col.push(top);
   }
+  /* every child hanging off this page is listed; the strand only carries on
+     further down while there is a single child to follow */
   (function below(q){
-    (cmap[q.id] || []).forEach(function(id){
-      var k = page(n, id);
-      if(!k || got[k.id] || !upright(k) || k.x !== q.x) return;
-      got[k.id] = 1;
-      col.push(k);
-      below(k);
-    });
+    var kids = (cmap[q.id] || []).map(function(id){ return page(n, id); })
+      .filter(function(k){ return k && !got[k.id] && upright(k); });
+    kids.forEach(function(k){ got[k.id] = 1; col.push(k); });
+    if(kids.length === 1) below(kids[0]);
   })(p);
-  return col.sort(function(a,b){ return a.y - b.y; });
+  return col.sort(function(a,b){ return (a.y - b.y) || (visX(a) - visX(b)); });
 }
 
 function deletePage(n, id){
@@ -956,7 +955,7 @@ function helpHTML(){
       ])
     + sec("Inside a page", [
         ["ROW bar","the pages hanging off the same parent as this one, and anything chained on beside them"],
-        ["COLUMN bar","the pages this one hangs from, and the ones straight beneath it"],
+        ["COLUMN bar","the pages this one hangs from, and the ones hanging beneath it"],
         ["+ card","a new card, added at the top"],
         ["Card grip","drag to reorder cards"]
       ])
