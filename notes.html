@@ -658,36 +658,62 @@ function addPage(n, from, dir){
   return p;
 }
 
-/* The strand you are on: walk outward through *connected* pages that stay on the
-   same axis. Sharing a column by coincidence is not being on the same strand. */
+/* The strand you are on. Sharing a row or a column with another branch's pages
+   by coincidence is not being on the same strand. */
 function axis(n, p, kind){
-  /* a row is a level: every page sitting at the same depth belongs to it,
-     whether or not it is wired to the one you're standing on */
+  /* a row is a family: the pages hanging off the same parent as the one you're
+     standing on, plus whatever is chained on sideways from them */
   if(kind === "row"){
-    return n.pages.filter(function(q){ return q.y === p.y; })
-      .sort(function(a,b){ return visX(a) - visX(b); });
+    var pm = parentOf(n), cm = childrenOf(n);
+    var flat = function(q){ return q.dir === "left" || q.dir === "right"; };
+    var kidsOf = function(q){
+      return (cm[q.id] || []).map(function(id){ return page(n, id); })
+        .filter(function(k){ return !!k; });
+    };
+    /* back along the sideways chain to the page that starts it */
+    var head = p, guard = 0;
+    while(flat(head) && pm[head.id] && page(n, pm[head.id]) && guard++ < 999){
+      head = page(n, pm[head.id]);
+    }
+    var above = pm[head.id] ? page(n, pm[head.id]) : null;
+    var heads = above
+      ? kidsOf(above).filter(function(q){ return q.dir === head.dir; })
+      : [head];
+    var row = [], seen = {};
+    (function walk(list){
+      list.forEach(function(q){
+        if(seen[q.id]) return;
+        seen[q.id] = 1;
+        if(q.y === p.y) row.push(q);
+        walk(kidsOf(q).filter(flat));
+      });
+    })(heads);
+    return row.sort(function(a,b){ return visX(a) - visX(b); });
   }
-  var adj = {};
-  n.edges.forEach(function(e){
-    (adj[e[0]] = adj[e[0]] || []).push(e[1]);
-    (adj[e[1]] = adj[e[1]] || []).push(e[0]);
-  });
-  function onAxis(q){ return kind === "col" ? q.x === p.x : q.y === p.y; }
-  var seen = {}, stack = [p.id], out = [];
-  seen[p.id] = 1;
-  while(stack.length){
-    var id = stack.pop(), q = page(n, id);
-    if(!q) continue;
-    out.push(q);
-    (adj[id] || []).forEach(function(k){
-      if(seen[k]) return;
-      var kq = page(n, k);
-      if(!kq || !onAxis(kq)) return;
-      seen[k] = 1;
-      stack.push(k);
+  /* a column is a lineage: the pages stacked above that you hang from, and the
+     ones hanging straight beneath you. A parent that has been centred over
+     several children is still the top of each child's column. */
+  var pmap = parentOf(n), cmap = childrenOf(n);
+  var upright = function(q){ return q.dir === "up" || q.dir === "down"; };
+  var col = [p], got = {};
+  got[p.id] = 1;
+  var top = p, g = 0;
+  while(upright(top) && pmap[top.id] && page(n, pmap[top.id]) && g++ < 999){
+    top = page(n, pmap[top.id]);
+    if(got[top.id]) break;
+    got[top.id] = 1;
+    col.push(top);
+  }
+  (function below(q){
+    (cmap[q.id] || []).forEach(function(id){
+      var k = page(n, id);
+      if(!k || got[k.id] || !upright(k) || k.x !== q.x) return;
+      got[k.id] = 1;
+      col.push(k);
+      below(k);
     });
-  }
-  return out.sort(function(a,b){ return kind === "col" ? a.y-b.y : a.x-b.x; });
+  })(p);
+  return col.sort(function(a,b){ return a.y - b.y; });
 }
 
 function deletePage(n, id){
@@ -929,8 +955,8 @@ function helpHTML(){
         ["Esc","cancel a drag"]
       ])
     + sec("Inside a page", [
-        ["ROW bar","every page on the same level"],
-        ["COLUMN bar","the pages connected above and below this one"],
+        ["ROW bar","the pages hanging off the same parent as this one, and anything chained on beside them"],
+        ["COLUMN bar","the pages this one hangs from, and the ones straight beneath it"],
         ["+ card","a new card, added at the top"],
         ["Card grip","drag to reorder cards"]
       ])
