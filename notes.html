@@ -586,29 +586,31 @@ function relayout(n){
       return kids.filter(function(k){ return byId[k] && !seen[k] && byId[k].dir === d; });
     }
 
-    /* Children below (and above) go first, from a provisional origin. The first
-       one slides further along its own direction if it won't fit; later siblings
-       fan out sideways from it. */
-    var kidXs = [];
-    ["down","up"].forEach(function(d){
+    /* Children below go first, from a provisional origin. The first one slides
+       further along its own direction if it won't fit; later siblings fan out
+       sideways from it. */
+    function hang(d, fromX, xs){
       var step = (d === "down") ? 1 : -1, first = true;
       group(d).forEach(function(k){
         var sub = build(k, seen);
         if(!sub) return;
-        var ox = -sub.pos[k].x, oy = step, guard = 0;
+        var ox = fromX - sub.pos[k].x, oy = step, guard = 0;
         while(!fits(sub, ox, oy) && guard++ < 400){
           if(first) oy += step; else ox++;
         }
         absorb(sub, ox, oy);
-        kidXs.push(sub.pos[k].x + ox);
+        xs.push(sub.pos[k].x + ox);
         first = false;
       });
-    });
+    }
+    var kidXs = [], below = group("down").length > 0;
+    hang(below ? "down" : "up", 0, kidXs);
 
     /* Sit the parent in the middle of the children hanging beneath it. With an
        even number there is no middle tile, so lean left: the first child stays
        under its parent and the next ones open out to the right, which is
-       where they were before. */
+       where they were before. A page with nothing beneath it centres under
+       the ones above instead. */
     var px = 0;
     if(kidXs.length){
       px = Math.floor((Math.min.apply(null, kidXs) + Math.max.apply(null, kidXs)) / 2);
@@ -616,6 +618,9 @@ function relayout(n){
     var g2 = 0;
     while(cells[px + ",0"] && g2++ < 400) px++;
     cells[px + ",0"] = id; pos[id] = {x:px, y:0};
+
+    /* Children above then sit straight over wherever the parent ended up. */
+    if(below) hang("up", px, []);
 
     /* Then children to the sides, measured from where the parent ended up. */
     ["right","left"].forEach(function(d){
@@ -1300,9 +1305,8 @@ function visX(p){
   var off = 0, q = p, prev = null, g = 0;
   while(q && g++ < 999){
     /* the top page has nothing to slide against, so its nudge slides it (and
-       whatever is chained on beside it) across the pages hanging above and
-       below it */
-    if(q._par || !prev || prev.dir === "left" || prev.dir === "right") off += q.xoff || 0;
+       whatever sits above or beside it) across the pages hanging below it */
+    if(q._par || !prev || prev.dir !== "down") off += q.xoff || 0;
     prev = q; q = q._par;
   }
   return p.x + off;
@@ -1312,7 +1316,7 @@ function canNudge(n, p){
   return n.edges.some(function(e){
     if(e[0] !== p.id) return false;
     var k = page(n, e[1]);
-    return k && (k.dir === "down" || k.dir === "up");
+    return k && k.dir === "down";
   });
 }
 /* each page knows its parent for visX; hidden so it is never saved */
