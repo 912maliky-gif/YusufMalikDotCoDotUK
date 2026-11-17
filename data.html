@@ -258,7 +258,7 @@ body.locked #app{visibility:hidden}
    so new features automatically work on old data without re-pasting anything.
    Backups store every top-level DB field, so new things a future version adds (e.g. watchlists) are
    carried in backups automatically. A page never opens data from a NEWER format than it understands. */
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.4.1';
 // The data file that lives next to Data.html. Browsers won't let a page read a .json file beside it, but they do let it
 // load a script from its own folder (whatever the extension). It's .txt, not .js, because Windows/Edge flags .js downloads as dangerous.
 const STORE_FILE = 'Data-store.txt';
@@ -804,7 +804,7 @@ $('#filein').addEventListener('change', async ev => {
     location.hash = '#/updates'; route();
   } catch (e) {
     console.error(e); done();
-    if (isWrongPassword(e)){ const left = await failedAttempt(); if (!left){ alert(`Too many wrong passwords. The copy of Data stored on this device has been erased. Your data files are still encrypted.`); SKIP_UNLOAD = true; location.reload(); return; } alert(`Wrong password. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); }
+    if (isWrongPassword(e)){ const left = await failedAttempt(); if (!left){ alert(`Too many failed attempts. The copy of Data stored on this device has been erased. Your data files are still encrypted.`); SKIP_UNLOAD = true; location.reload(); return; } alert(`Couldn’t open that file. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); }
     else alert('Could not load that file: ' + e.message);
   }
   done(); renderChrome();
@@ -1039,7 +1039,9 @@ function renderChrome(){
   $('#appver').textContent = 'v' + APP_VERSION;
   $('#topmeta').textContent = D && D.S ? `${D.S} week${D.S > 1 ? 's' : ''} · ${fmtISO(DB.snapshots[0].date)} – ${fmtISO(DB.snapshots[D.S - 1].date)} · ${fmtN(DB.snapshots[D.S - 1].rows)} people` : '';
 }
-window.addEventListener('beforeunload', e => { if (!SKIP_UNLOAD && !GATE.active && isDirty()){ e.preventDefault(); e.returnValue = ''; } });
+// Only warn on closing if this browser can't keep its own (encrypted) copy — otherwise nothing is lost by closing;
+// the orange "Not saved to data file" box is the reminder to save the file.
+window.addEventListener('beforeunload', e => { if (!SKIP_UNLOAD && !GATE.active && !IDB.ok && isDirty()){ e.preventDefault(); e.returnValue = ''; } });
 
 // global search
 (function(){
@@ -1598,7 +1600,7 @@ function renderSettings(main){
     </div>
     <div class="card" id="sec"><h3>Password, passkey &amp; encryption</h3>
       ${(() => { const kr = CRYPTO.keyring, pks = slotsOf(kr, 'pk'), on = needsPasskey(kr);
-        return `<p style="margin-top:0">Everything Data stores — on this device and in ${STORE_FILE} — is encrypted with AES-256. It locks itself after ${AUTO_LOCK_MIN} minutes without use, and ${MAX_TRIES} wrong attempts in a row erase the copy stored on this device. There is no password recovery.</p>
+        return `<p style="margin-top:0">Everything Data stores — on this device and in ${STORE_FILE} — is encrypted with AES-256. It locks itself after ${AUTO_LOCK_MIN} minutes without use, and ${MAX_TRIES} failed attempts in a row erase the copy stored on this device. There is no password recovery.</p>
         <p style="margin:0 0 8px"><b>Two-factor:</b> ${on ? `<span class="pill t-pos">On</span> password + passkey${slotsOf(kr, 'rec').length ? ', with a recovery key' : ''}` : '<span class="pill t-warn">Off</span> password only'}</p>
         ${pks.length ? `<table class="t" style="margin-bottom:10px"><tr><th>Passkey</th><th>Added</th><th></th></tr>${pks.map(sl => `<tr><td>${esc(sl.label || 'Passkey')}</td><td>${sl.added ? fmtISO(sl.added) : ''}</td><td style="text-align:right">${pks.length > 1 ? `<button class="sm danger" data-rmpk="${esc(sl.credId)}">Remove</button>` : ''}</td></tr>`).join('')}</table>` : ''}
         ${canPasskey()
@@ -1650,8 +1652,8 @@ function renderSettings(main){
     await busy('Checking…'); const ok = await passwordMatches(pw); done();
     if (ok){ await setFails(0); return pw; }
     const left = await failedAttempt();
-    if (!left){ alert('Too many wrong attempts. The copy stored on this device has been erased.'); SKIP_UNLOAD = true; location.reload(); return null; }
-    alert(`Wrong password. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); return null;
+    if (!left){ alert('Too many failed attempts. The copy stored on this device has been erased.'); SKIP_UNLOAD = true; location.reload(); return null; }
+    alert(`That didn’t work. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); return null;
   }
   async function saved(msg){ markChanged(); await persist(); done(); renderChrome(); renderSettings(main); $('#sec') && $('#sec').scrollIntoView({ block:'center' }); toast(msg); }
   const kr = CRYPTO.keyring;
@@ -1690,7 +1692,7 @@ function renderSettings(main){
     if (p1.length < 10){ alert('Use at least 10 characters for the new password.'); return; }
     if (p1 !== p2){ alert('The two new passwords don’t match.'); return; }
     await busy('Checking password…'); const good = await passwordMatches(p0); done();
-    if (!good){ const left = await failedAttempt(); if (!left){ alert('Too many wrong attempts. The copy stored on this device has been erased.'); SKIP_UNLOAD = true; location.reload(); return; } alert(`Current password is wrong. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); return; }
+    if (!good){ const left = await failedAttempt(); if (!left){ alert('Too many failed attempts. The copy stored on this device has been erased.'); SKIP_UNLOAD = true; location.reload(); return; } alert(`That didn’t work. ${left} attempt${left === 1 ? '' : 's'} left on this device.`); return; }
     await setFails(0);
     const on = needsPasskey(kr);
     let pkNow = null, rec = null;
@@ -1773,10 +1775,10 @@ function gateUnlock(cands, note){
       done(); const left = await failedAttempt();
       if (!left){
         const file = cands.find(c => c.from === 'file');
-        const msg = '<b style="color:var(--neg)">Too many wrong attempts.</b> The copy stored on this device has been erased. Your data file is still encrypted.';
+        const msg = '<b style="color:var(--neg)">Too many failed attempts.</b> The copy stored on this device has been erased. Your data file is still encrypted.';
         return file ? gateUnlock([file], msg) : gateCreate(null, msg);
       }
-      say(`<b style="color:var(--neg)">${pk ? (useRec ? 'Wrong password or recovery key.' : 'Wrong password, or a passkey that doesn’t match.') : 'Wrong password.'}</b> ${attemptsText()}`);
+      say(`<b style="color:var(--neg)">Unlock failed.</b> ${attemptsText()}`);   // never says which part was wrong
       $('#g-pw').value = ''; $('#g-pw').focus(); return;
     }
     await setFails(0);
