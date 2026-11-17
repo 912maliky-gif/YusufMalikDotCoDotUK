@@ -759,15 +759,18 @@ function rehangOption(n, p){
   var sibs = (cm[par.id] || []).map(function(id){ return page(n, id); })
     .filter(function(q){ return q && q.dir === p.dir; });
   var i = sibs.indexOf(p);
-  if(i < 1) return null;                         /* nothing to its left to join */
-  var end = sibs[i-1], g2 = 0;                   /* the far end of that sibling's chain */
+  /* join the sibling to its left, or if it is the first, the one to its right */
+  var side = i > 0 ? "right" : "left";
+  var end = i > 0 ? sibs[i-1] : sibs[i+1];
+  if(!end) return null;                          /* no sibling to join */
+  var g2 = 0;                                    /* the near end of that sibling's chain */
   while(g2++ < 999){
-    var rights = (cm[end.id] || []).map(function(id){ return page(n, id); })
-      .filter(function(q){ return q && q.dir === "right" && q !== p; });
-    if(!rights.length) break;
-    end = rights[rights.length-1];
+    var more = (cm[end.id] || []).map(function(id){ return page(n, id); })
+      .filter(function(q){ return q && q.dir === side && q !== p; });
+    if(!more.length) break;
+    end = side === "right" ? more[more.length-1] : more[0];
   }
-  return {kind:"chain", parent:end, dir:"right"};
+  return {kind:"chain", parent:end, dir:side};
 }
 function rehang(n, p){
   var o = rehangOption(n, p);
