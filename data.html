@@ -258,7 +258,7 @@ body.locked #app{visibility:hidden}
    so new features automatically work on old data without re-pasting anything.
    Backups store every top-level DB field, so new things a future version adds (e.g. watchlists) are
    carried in backups automatically. A page never opens data from a NEWER format than it understands. */
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.5.1';
 // The data file that lives next to Data.html. Browsers won't let a page read a .json file beside it, but they do let it
 // load a script from its own folder (whatever the extension). It's .txt, not .js, because Windows/Edge flags .js downloads as dangerous.
 const STORE_FILE = 'Data-store.txt';
@@ -1689,7 +1689,9 @@ function renderImport(main){
       done(); renderChrome(); renderImport(main);
       const s = DB.snapshots.findIndex(x => x.date === date); const n = D.events.filter(e => e.s === s).length;
       $('#imp-result').innerHTML = `<div class="notice good" style="margin-top:12px">Added ${fmtISO(date)} — ${fmtN(n)} update${n === 1 ? '' : 's'} found. <a href="#/updates">See updates →</a></div>
-        <div class="notice warn">Next: click <b>Save data file</b> (bottom left) and put ${STORE_FILE} in your Data folder, replacing the old one.</div>`;
+        ${syncAllowed()
+          ? '<div class="notice">Syncing to GitHub automatically — nothing else to do. Your other devices get it next time they unlock.</div>'
+          : `<div class="notice warn">Next: click <b>Save data file</b> (bottom left) and put ${STORE_FILE} in your Data folder, replacing the old one.</div>`}`;
     };
   }
 }
