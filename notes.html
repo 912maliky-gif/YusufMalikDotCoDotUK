@@ -1112,6 +1112,7 @@ function helpHTML(){
         ["Shift + Enter","another line inside the same point"],
         ["Tab","indent one level"],
         ["Backspace at the start","step back out a level, then delete"],
+        ["\u2318 / Ctrl + Backspace at the start","move it all the way back to the left"],
         ["to do","adds it to the to-do list on the index"],
         ["Clock","the history of that point alone"]
       ])
@@ -2481,6 +2482,14 @@ app.addEventListener("keydown", function(e){
       var above = pts[i-1];
       var ceiling = above ? (above.depth || 0) + 1 : 0;   /* no skipping levels */
       c.pt.depth = Math.max(0, Math.min((c.pt.depth || 0) + 1, ceiling, 8));
+      focusPointId = c.pt.id;
+      save(); render();
+    } else if(e.key === "Backspace" && (e.metaKey || e.ctrlKey) && (c.pt.depth || 0) > 0
+              && pin.selectionStart === 0 && pin.selectionEnd === 0){
+      /* Cmd/Ctrl+Backspace at the start: all the way back to the left in one go */
+      e.preventDefault();
+      pushUndo();
+      c.pt.depth = 0;
       focusPointId = c.pt.id;
       save(); render();
     } else if(e.key === "Backspace" && pin.selectionStart === 0 && pin.selectionEnd === 0){
