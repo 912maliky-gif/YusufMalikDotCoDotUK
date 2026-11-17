@@ -232,8 +232,10 @@ input,textarea,select{font:inherit;color:inherit}
 .spread{position:absolute;bottom:26px;right:8px;padding:2px 4px;border-radius:5px;
   color:var(--icon);font-size:13px;line-height:1;cursor:ew-resize}
 .spread:hover{color:var(--icon-hi)}
-.rehang{position:absolute;bottom:26px;right:30px;padding:2px 4px;border-radius:5px;
-  color:var(--icon);font-size:13px;line-height:1}
+.rehang{position:absolute;bottom:24px;right:30px;padding:2px 4px;border-radius:5px;
+  color:var(--icon);line-height:0}
+.ppl{fill:currentColor;display:block}
+.helpicon{display:inline-block;vertical-align:-2px;color:var(--icon);margin-right:4px}
 .rehang:hover{color:var(--icon-hi)}
 .node.tinted .rehang{color:rgba(0,0,0,.45)}
 .node.tinted .rehang:hover{color:#1c1c1a}
@@ -727,6 +729,14 @@ function axis(n, p, kind){
 /* A page chained on beside another can instead hang from the page above that
    chain, and back again. Only its own line moves: whatever hangs off it comes
    along, and it keeps its place in the row. */
+/* two people: the switch between being chained beside a page and hanging from one */
+var PEOPLE_ICON = '<svg class="ppl" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">'
+  + '<circle cx="16.2" cy="7" r="3.6"/>'
+  + '<path d="M14.4 12.7c.6-.1 1.2-.2 1.8-.2 3.4 0 5.8 2.1 5.8 4.9 0 .9-.6 1.6-1.5 1.6h-3.3c.1-.3.1-.7.1-1 0-2.2-1.1-4.1-2.9-5.3z"/>'
+  + '<circle cx="8.3" cy="8.4" r="4"/>'
+  + '<path d="M8.3 13.8c3.7 0 6.6 2.2 6.6 5.2 0 .9-.7 1.6-1.6 1.6H3.3c-.9 0-1.6-.7-1.6-1.6 0-3 2.9-5.2 6.6-5.2z"/>'
+  + '</svg>';
+
 function rehangOption(n, p){
   var pm = parentOf(n), cm = childrenOf(n);
   var flat = function(q){ return q.dir === "left" || q.dir === "right"; };
@@ -1015,7 +1025,7 @@ function helpHTML(){
         ["Grip, bottom right","drag to reorder; a preview shows the result before you let go"],
         ["Hold \u2318 / Ctrl while dragging","move just that page, leaving its children behind"],
         ["\u2194 arrows","nudge a page sideways. Purely visual \u2014 nothing changes parent"],
-        ["\u21E1 / \u21E0","make a page chained on beside another a child of the page above it, and back again"],
+        ["<span class=\"helpicon\">"+PEOPLE_ICON+"</span> people icon","make a page chained on beside another a child of the page above it, and back again"],
         ["Esc","cancel a drag"]
       ])
     + sec("Inside a page", [
@@ -1394,7 +1404,7 @@ function viewNote(){
             + ' title="'+esc(o.kind === "hang"
                 ? "Make this a child of " + o.parent.title
                 : "Chain this on beside " + o.parent.title)+'">'
-            + (o.kind === "hang" ? "\u21E1" : "\u21E0") + '</button>';
+            + PEOPLE_ICON + '</button>';
         })()
       + (canNudge(n, p)
           ? '<button class="spread" data-act="spread" data-note="'+n.id+'" data-page="'+p.id+'"'
