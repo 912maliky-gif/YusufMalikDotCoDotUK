@@ -387,6 +387,11 @@ input,textarea,select{font:inherit;color:inherit}
 .cgrip svg{fill:currentColor;display:block}
 .block:hover .cgrip{opacity:.75}
 .cgrip:hover{opacity:1;color:var(--icon-hi)}
+.cbin{position:absolute;top:42px;right:12px;padding:4px 2px;border-radius:5px;
+  color:var(--icon);line-height:0;opacity:0}
+.cbin svg{fill:currentColor;display:block}
+.block:hover .cbin,.cbin:focus-visible{opacity:.75}
+.cbin:hover{opacity:1;color:var(--danger)}
 .block.cdragging{opacity:.5}
 .stamp{font-size:11px;color:var(--muted);white-space:nowrap}
 .block{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
@@ -722,6 +727,17 @@ function axis(n, p, kind){
   }
   /* every child hanging off this page is listed; the strand only carries on
      further down while there is a single child to follow */
+  /* and whatever hangs straight up off the pages above you, like a page
+     added on top of the one at the head of the column */
+  col.slice(1).forEach(function above(q){
+    (cmap[q.id] || []).forEach(function(id){
+      var k = page(n, id);
+      if(!k || got[k.id] || k.dir !== "up") return;
+      got[k.id] = 1;
+      col.push(k);
+      above(k);
+    });
+  });
   (function below(q){
     var kids = (cmap[q.id] || []).map(function(id){ return page(n, id); })
       .filter(function(k){ return k && !got[k.id] && upright(k); });
@@ -1558,6 +1574,11 @@ function viewPage(){
         + '<rect x="0" y="8" width="6" height="6" rx="2"/><rect x="8" y="8" width="6" height="6" rx="2"/>'
         + '<rect x="0" y="16" width="6" height="6" rx="2"/><rect x="8" y="16" width="6" height="6" rx="2"/>'
         + '</svg></button>'
+      + '<button class="cbin" data-act="delBlock" data-block="'+b.id+'" title="Delete card">'
+        + '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">'
+        + '<path d="M9.2 2.5h5.6l.9 1.8H20v2.2H4V4.3h4.3z"/>'
+        + '<path d="M5.6 8h12.8l-1 12.1c-.1 1-.9 1.9-2 1.9H8.6c-1.1 0-1.9-.9-2-1.9z"/>'
+        + '</svg></button>'
       + '<div class="btop">'
         + '<input class="btitle" placeholder="title" value="'+esc(b.title)+'"'
           + ' data-act="bTitle" data-block="'+b.id+'">'
@@ -1597,9 +1618,6 @@ function viewPage(){
       + '<div class="bfoot">'
         + '<button class="toggle'+(b.done?" on":"")+'" data-act="bDone" data-block="'+b.id+'">'
           + '<span class="sw"></span>done</button>' + stamp
-        + '<span class="spacer"></span>'
-        + '<button class="x" style="opacity:.6" data-act="delBlock" data-block="'+b.id+'"'
-          + ' title="Delete card">✕</button>'
       + '</div></div>';
   }).join("");
 
@@ -2314,7 +2332,7 @@ app.addEventListener("click", function(e){
     case "addBlock":
       pushUndo();
       var nb = newBlock();
-      c.p.blocks.unshift(nb);
+      c.p.blocks.push(nb);
       logChange(c.n, "add", {pageId:c.p.id, blockId:nb.id, section:c.p.title, text:"new card"});
       save(); break;
 
