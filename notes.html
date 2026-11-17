@@ -232,6 +232,11 @@ input,textarea,select{font:inherit;color:inherit}
 .spread{position:absolute;bottom:26px;right:8px;padding:2px 4px;border-radius:5px;
   color:var(--icon);font-size:13px;line-height:1;cursor:ew-resize}
 .spread:hover{color:var(--icon-hi)}
+.rehang{position:absolute;bottom:26px;right:30px;padding:2px 4px;border-radius:5px;
+  color:var(--icon);font-size:13px;line-height:1}
+.rehang:hover{color:var(--icon-hi)}
+.node.tinted .rehang{color:rgba(0,0,0,.45)}
+.node.tinted .rehang:hover{color:#1c1c1a}
 .grip{position:absolute;bottom:4px;right:6px;padding:6px;border-radius:5px;
   color:var(--icon);display:flex;align-items:center;justify-content:center;
   cursor:grab;line-height:0}
@@ -716,6 +721,57 @@ function axis(n, p, kind){
   return col.sort(function(a,b){ return (a.y - b.y) || (visX(a) - visX(b)); });
 }
 
+/* A page chained on beside another can instead hang from the page above that
+   chain, and back again. Only its own line moves: whatever hangs off it comes
+   along, and it keeps its place in the row. */
+function rehangOption(n, p){
+  var pm = parentOf(n), cm = childrenOf(n);
+  var flat = function(q){ return q.dir === "left" || q.dir === "right"; };
+  var par = pm[p.id] && page(n, pm[p.id]);
+  if(!p.dir || !par) return null;
+  if(flat(p)){
+    var head = par, g = 0;
+    while(flat(head) && pm[head.id] && page(n, pm[head.id]) && g++ < 999){
+      head = page(n, pm[head.id]);
+    }
+    var above = !flat(head) && pm[head.id] && page(n, pm[head.id]);
+    if(!above) return null;                      /* the chain hangs off nothing */
+    return {kind:"hang", parent:above, beside:head, dir:head.dir};
+  }
+  var sibs = (cm[par.id] || []).map(function(id){ return page(n, id); })
+    .filter(function(q){ return q && q.dir === p.dir; });
+  var i = sibs.indexOf(p);
+  if(i < 1) return null;                         /* nothing to its left to join */
+  var end = sibs[i-1], g2 = 0;                   /* the far end of that sibling's chain */
+  while(g2++ < 999){
+    var rights = (cm[end.id] || []).map(function(id){ return page(n, id); })
+      .filter(function(q){ return q && q.dir === "right" && q !== p; });
+    if(!rights.length) break;
+    end = rights[rights.length-1];
+  }
+  return {kind:"chain", parent:end, dir:"right"};
+}
+function rehang(n, p){
+  var o = rehangOption(n, p);
+  if(!o) return false;
+  var pm = parentOf(n);
+  n.edges = n.edges.filter(function(e){ return !(e[0] === pm[p.id] && e[1] === p.id); });
+  var edge = [o.parent.id, p.id], at = n.edges.length;
+  if(o.kind === "hang"){
+    /* sit next to the sibling whose chain it came from, so the row reads the same */
+    for(var k=0;k<n.edges.length;k++){
+      if(n.edges[k][0] === o.parent.id && n.edges[k][1] === o.beside.id){
+        at = (p.dir === "left") ? k : k + 1;
+        break;
+      }
+    }
+  }
+  n.edges.splice(at, 0, edge);
+  p.dir = o.dir;
+  relayout(n);
+  return true;
+}
+
 function deletePage(n, id){
   var par = parentOf(n)[id] || null;
   var kids = n.edges.filter(function(e){ return e[0]===id; }).map(function(e){ return e[1]; });
@@ -946,6 +1002,7 @@ function helpHTML(){
         ["Grip, bottom right","drag to reorder; a preview shows the result before you let go"],
         ["Hold \u2318 / Ctrl while dragging","move just that page, leaving its children behind"],
         ["\u2194 arrows","nudge a page sideways. Purely visual \u2014 nothing changes parent"],
+        ["\u21E1 / \u21E0","make a page chained on beside another a child of the page above it, and back again"],
         ["Esc","cancel a drag"]
       ])
     + sec("Inside a page", [
@@ -1303,6 +1360,15 @@ function viewNote(){
       + '</div>'
       + '<span class="nc">'+(count? count+' card'+(count===1?"":"s") : "empty")
         + (allDone ? '<span class="donetag">\u2713 done</span>' : "")+'</span>'
+      + (function(){
+          var o = rehangOption(n, p);
+          if(!o) return "";
+          return '<button class="rehang" data-act="rehang" data-note="'+n.id+'" data-page="'+p.id+'"'
+            + ' title="'+esc(o.kind === "hang"
+                ? "Make this a child of " + o.parent.title
+                : "Chain this on beside " + o.parent.title)+'">'
+            + (o.kind === "hang" ? "\u21E1" : "\u21E0") + '</button>';
+        })()
       + (p.dir
           ? '<button class="spread" data-act="spread" data-note="'+n.id+'" data-page="'+p.id+'"'
             + ' title="Drag sideways to nudge this page and its children">'
@@ -2020,7 +2086,7 @@ function confirmDeletePage(n, p){
 /* ============ events ============ */
 var NEEDS_PAGE = {addPage:1, askDelPage:1, delPage:1, openPage:1, editPage:1,
                   addBlock:1, delBlock:1, bTodo:1, bDone:1, ptDone:1, ptDel:1,
-                  spread:1, cgrip:1};
+                  spread:1, cgrip:1, rehang:1};
 var NEEDS_BLOCK = {delBlock:1, bTodo:1, bDone:1, ptDone:1, ptDel:1};
 
 function ctx(el){
@@ -2097,6 +2163,11 @@ app.addEventListener("click", function(e){
       db.notes = db.notes.filter(function(x){return x.id!==c.n.id;}); save(); break;
 
     case "askDelPage": confirmDeletePage(c.n, c.p); return;
+
+    case "rehang":
+      pushUndo();
+      if(!rehang(c.n, c.p)) return;
+      save(); break;
 
     case "addPage":
       pushUndo();
