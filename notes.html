@@ -218,8 +218,15 @@ body.todo-open .wrap{padding-right:calc(var(--tpw,340px) + 14px + clamp(10px,1.4
 .todogroup h3{margin:0 0 8px;font-size:13px;font-weight:640}
 .todo{display:flex;gap:9px;align-items:flex-start;width:100%;padding:5px 6px;border-radius:5px;text-align:left}
 .todo:hover{background:var(--bg)}
-.todo .box{flex:none;width:14px;height:14px;margin-top:3px;border:1.5px solid var(--line2);border-radius:3px}
+.todo{cursor:pointer}
+.todo .box{flex:none;width:16px;height:16px;margin-top:2px;padding:0;border:1.5px solid var(--line2);border-radius:4px;
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;line-height:1;
+  color:var(--panel);cursor:pointer}
+.todo .box:hover{border-color:var(--accent)}
 .todo.is-done .box{background:var(--done);border-color:var(--done)}
+.tdfilter{display:inline-flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;
+  font-weight:560;font-size:13px;padding:4px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.tdfilter .caret{font-size:9px;opacity:.8}
 .todo.is-done .t{color:var(--done);text-decoration:line-through}
 .todo .t{flex:1;min-width:0}
 .todo .where{color:var(--muted);font-size:12px}
@@ -1457,24 +1464,33 @@ function timelineHTML(){
 /* ---- front ---- */
 /* every point marked "to do" in a note, as clickable rows that open its page */
 function todoRows(n){
-  var items = [];
+  var open = [], done = [];
   n.pages.forEach(function(p){
     p.blocks.forEach(function(b){
       ensurePoints(b).forEach(function(pt){
         if(!pt.todo) return;
-        items.push('<button class="todo'+(pt.done?" is-done":"")+'" data-act="openPage"'
-          + ' data-note="'+n.id+'" data-page="'+p.id+'">'
-          + '<span class="box"></span>'
+        var ids = ' data-note="'+n.id+'" data-page="'+p.id+'"';
+        var html = '<div class="todo'+(pt.done?" is-done":"")+'" role="button" tabindex="0"'
+          + ' data-act="openPage"'+ids+'>'
+          + '<button class="box" data-act="ptDone"'+ids+' data-block="'+b.id+'" data-point="'+pt.id+'"'
+            + ' title="'+(pt.done ? "Mark as not done" : "Mark as done")+'">'+(pt.done ? "\u2713" : "")+'</button>'
           + '<span class="t">'+esc(pt.text || "untitled")
           + ' <span class="where">'+esc(p.title)
           + (b.title ? ' · '+esc(b.title) : '')
           + (pt.person ? ' · '+esc(pt.person) : '')+'</span></span>'
-          + '</button>');
+          + '</div>';
+        if(pt.done) done.push({at:pt.doneAt || 0, html:html}); else open.push(html);
       });
     });
   });
-  return items;
+  /* still to do first; then what's done, the most recently ticked on top */
+  done.sort(function(a, b){ return b.at - a.at; });
+  return open.concat(done.map(function(d){ return d.html; }));
 }
+
+/* which note the index to-do list is showing ("" = all); a per-browser choice */
+var todoFilter = "";
+try{ todoFilter = localStorage.getItem("notes.todoFilter") || ""; }catch(e){}
 function openTodos(n){
   var k = 0;
   n.pages.forEach(function(p){ p.blocks.forEach(function(b){
@@ -1536,7 +1552,9 @@ function viewFront(){
       + '</button>';
   }).join("");
 
+  if(todoFilter && !note(todoFilter)) todoFilter = "";
   var groups = db.notes.map(function(n){
+    if(todoFilter && n.id !== todoFilter) return "";
     var items = todoRows(n);
     if(!items.length) return "";
     return '<div class="todogroup"><h3>'+esc(n.title)+'</h3>'+items.join("")+'</div>';
@@ -1547,8 +1565,12 @@ function viewFront(){
     + '<div class="card"><h2>Notes<span class="spacer"></span>'
       + '<button class="btn" data-act="newNote">+ Note</button></h2>'
       + '<div class="rowlist">'+(notes || '<div class="empty">No notes yet.</div>')+'</div></div>'
-    + '<div class="card"><h2>To do list</h2>'
-      + (groups || '<div class="empty">Nothing marked “to do” yet.</div>')+'</div>'
+    + '<div class="card"><h2>To do list<span class="spacer"></span>'
+      + (db.notes.length ? '<button class="btn tdfilter" data-act="todoFilter" title="Show one note\u2019s to-dos">'
+          + esc(todoFilter ? (note(todoFilter).title || "untitled") : "All notes")
+          + ' <span class="caret">\u25BE</span></button>' : '')
+      + '</h2>'
+      + (groups || '<div class="empty">'+(todoFilter ? 'Nothing marked “to do” in this note.' : 'Nothing marked “to do” yet.')+'</div>')+'</div>'
   + '</div></div>';
 }
 
@@ -2492,6 +2514,19 @@ app.addEventListener("click", function(e){
       break;
 
     case "front": editingPageId=null; view={v:"front"}; break;
+    case "todoFilter":
+      var fr = el.getBoundingClientRect();
+      var fitems = [{id:"", label:"All notes"}].concat(db.notes.map(function(x){
+        return {id:x.id, label:x.title || "untitled"};
+      })).map(function(o, k){
+        return {i:k, label:(o.id === todoFilter ? "\u2713 " : "\u2003") + o.label, run:function(){
+          todoFilter = o.id;
+          try{ localStorage.setItem("notes.todoFilter", todoFilter); }catch(e){}
+          render();
+        }};
+      });
+      setTimeout(function(){ openMenu(fr.right - 180, fr.bottom + 4, fitems); }, 0);
+      return;
     case "todoPanel":
       todoPanel = !todoPanel;
       try{ sessionStorage.setItem("notes.todoPanel", todoPanel ? "1" : "0"); }catch(e){}
@@ -2760,7 +2795,8 @@ app.addEventListener("keydown", function(e){
     return;
   }
   if(e.key!=="Enter" && e.key!==" ") return;
-  var n = e.target.closest('.node'); if(!n) return;
+  var n = e.target.closest('.node, .todo');
+  if(!n || (e.target !== n && e.target.tagName === "BUTTON")) return;   /* a button inside presses itself */
   e.preventDefault(); n.click();
 });
 
