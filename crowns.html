@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#b8c5b0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141614" media="(prefers-color-scheme: dark)">
+<meta name="robots" content="noindex">
+<title>Yusuf's Crowns</title>
+<script>
+  // Unlocking needs the browser's crypto, which only works on a secure page — and the site also answers on plain http.
+  if (location.protocol === "http:" && location.hostname !== "localhost") location.replace("https:" + location.href.slice(5));
+</script>
+<style>
+  :root {
+    --bg: #b8c5b0; --panel: #ffffff; --ink: #17281a; --muted: #5b7360; --line: #c0d8c6;
+    --accent-soft: #e0f0e4; --wall: #17281a; --seam: rgba(23, 40, 26, .16); --bad: #c0392b;
+    --cell-filter: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141614; --panel: #1d201e; --ink: #e9ece8; --muted: #8b918c; --line: #2a2e2b;
+      --accent-soft: #222a23; --wall: #0b0c0b; --seam: rgba(0, 0, 0, .22); --bad: #ff6b5b;
+      --cell-filter: saturate(.85) brightness(.86);
+    }
+  }
+  @font-face { font-family: "EB Garamond"; src: url("malik.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); min-height: 100dvh;
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  button { font: inherit; color: inherit; touch-action: manipulation; }
+  [hidden] { display: none !important; }
+
+  /* ---- The site's bar, as on Bot and Notes ---- */
+  .top { display: flex; align-items: center; gap: 12px; padding: 10px clamp(12px, 1.4vw, 24px); min-height: 49px;
+         padding-top: max(10px, env(safe-area-inset-top));
+         border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 20; }
+  .brand { font-weight: 640; letter-spacing: -.01em; white-space: nowrap; color: var(--ink); text-decoration: none; }
+  .mark { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: grid; grid-template-columns: 1fr auto 1fr;
+          align-items: center; white-space: nowrap; font-family: "EB Garamond", Garamond, "Hoefler Text", serif; z-index: 2; }
+  .mside { display: flex; align-items: center; gap: 2px; }
+  .mside.l { justify-self: end; }
+  .mside.r { justify-self: start; }
+  .mword { font: inherit; background: none; border: none; display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px;
+           border-radius: 8px; color: var(--ink); cursor: pointer; }
+  .mword:hover { background: var(--accent-soft); }
+  .mname { font-size: 19px; letter-spacing: .044em; line-height: 1; display: inline-block; transform: scaleX(.8); margin: 0 -6px; }
+  .marticle, .mnoun { font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--muted);
+    display: inline-block; overflow: hidden; max-width: 64px; transition: max-width .3s cubic-bezier(.2,.7,.3,1), opacity .2s, margin .3s; }
+  .mark.open .marticle, .mark.open .mnoun { max-width: 0; opacity: 0; margin: 0 -3px; }
+  .mpage { font-size: 13px; letter-spacing: .044em; line-height: 1; color: var(--ink); text-decoration: none; border-radius: 7px;
+    display: inline-block; overflow: hidden; max-width: 0; padding: 5px 0; margin: 0; opacity: 0; pointer-events: none;
+    transform: scale(.9); transition: max-width .34s cubic-bezier(.2,.7,.3,1), padding .34s, margin .34s, opacity .24s, transform .34s cubic-bezier(.2,.7,.3,1); }
+  .mside.l .mpage { transform: translateX(14px) scale(.9); }
+  .mside.r .mpage { transform: translateX(-14px) scale(.9); }
+  .mark.open .mpage { max-width: 140px; padding: 5px 9px; margin: 0 2px; opacity: 1; pointer-events: auto; transform: none; }
+  .mside.l .mpage:last-child { margin-right: 6px; }
+  .mside.r .mpage:first-child { margin-left: 6px; }
+  .mpage:hover { background: var(--accent-soft); }
+  .mpage.here { background: var(--bg); color: var(--ink); cursor: default; }
+  .mpage.here:hover { background: var(--bg); }
+  .levels-btn { margin-left: auto; background: var(--accent-soft); border: 0; border-radius: 999px; padding: 6px 14px; font-size: 13px;
+                font-weight: 600; cursor: pointer; position: relative; z-index: 3; }
+  @media (max-width: 640px) { .mark { display: none; } }
+
+  /* ---- The game ---- */
+  main { display: grid; justify-items: center; gap: 14px; padding: 18px 16px max(28px, env(safe-area-inset-bottom)); }
+  .stage { width: var(--board); display: grid; gap: 12px; }
+  :root { --board: min(calc(100vw - 32px), 560px, max(300px, calc(100dvh - 270px))); }
+  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .title { font-family: "EB Garamond", Garamond, "Hoefler Text", serif; font-size: 30px; line-height: 1; letter-spacing: .01em; margin: 0; }
+  .size { color: var(--muted); font-size: 13px; margin-left: 8px; font-family: inherit; }
+  .clock { font-variant-numeric: tabular-nums; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .clock svg { width: 16px; height: 16px; opacity: .55; }
+  .diff { display: flex; gap: 3px; align-items: center; color: var(--muted); font-size: 12px; }
+  .diff i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+  .diff i.on { background: var(--ink); }
+  .sub { display: flex; justify-content: space-between; align-items: center; margin-top: -4px; }
+
+  .board { --n: 7; width: var(--board); aspect-ratio: 1; display: grid; grid-template-columns: repeat(var(--n), 1fr);
+           border: 3px solid var(--wall); border-radius: 12px; overflow: hidden; background: var(--wall);
+           touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+           box-shadow: 0 10px 30px -18px rgba(23, 40, 26, .55); position: relative; outline: none; }
+  .cell { position: relative; background: var(--c); filter: var(--cell-filter); display: grid; place-items: center; cursor: pointer;
+          box-shadow: var(--walls); }
+  .cell::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+  .cell.hatch::after { background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--bad) 32%, transparent) 5px 8px); }
+  .cell.cursor { outline: 3px solid var(--ink); outline-offset: -5px; z-index: 1; }
+  .board:not(.kbd) .cell.cursor, .board:not(:focus) .cell.cursor { outline: none; }
+  .cell svg { width: 62%; height: 62%; pointer-events: none; }
+  .cell .x { width: 34%; height: 34%; color: rgba(23, 40, 26, .62); }
+  .cell.auto .x { color: rgba(23, 40, 26, .3); }
+  .cell .crown { color: #17281a; animation: pop .22s cubic-bezier(.3,1.6,.5,1); }
+  .cell.bad .crown { color: var(--bad); }
+  .cell.flash { animation: flash .9s ease 2; }
+  @keyframes pop { from { transform: scale(.4); opacity: .3; } }
+  @keyframes flash { 50% { box-shadow: var(--walls), inset 0 0 0 999px rgba(255,255,255,.65); } }
+  .board.won .cell { cursor: default; }
+  .board.won .crown { animation: bounce .6s cubic-bezier(.3,1.6,.5,1) both; animation-delay: calc(var(--r) * 70ms); }
+  @keyframes bounce { 40% { transform: translateY(-18%) scale(1.15); } }
+
+  .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .tool { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 4px 8px; cursor: pointer;
+          display: grid; justify-items: center; gap: 3px; font-size: 12px; font-weight: 600; }
+  .tool svg { width: 20px; height: 20px; }
+  .tool:hover { background: var(--accent-soft); }
+  .tool:disabled { opacity: .45; cursor: default; }
+  .tool[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .rules { color: var(--muted); font-size: 13px; margin: 2px 0 0; text-align: center; text-wrap: balance; }
+  .toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); translate: -50% 20px; opacity: 0;
+           background: var(--ink); color: var(--panel); padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+           transition: opacity .2s, translate .2s; pointer-events: none; z-index: 60; white-space: nowrap; }
+  .toast.show { opacity: 1; translate: -50% 0; }
+
+  /* ---- Win card and level picker ---- */
+  .scrim { position: fixed; inset: 0; background: rgba(15, 25, 17, .38); display: grid; place-items: center; padding: 16px; z-index: 50;
+           animation: fade .2s; }
+  @keyframes fade { from { opacity: 0; } }
+  .card { background: var(--panel); border-radius: 18px; padding: 24px 22px 20px; width: min(360px, 100%); text-align: center;
+          box-shadow: 0 30px 60px -30px rgba(0,0,0,.5); animation: rise .3s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes rise { from { transform: translateY(16px) scale(.97); opacity: 0; } }
+  .card h2 { font-family: "EB Garamond", Garamond, serif; font-weight: 400; font-size: 34px; margin: 4px 0 2px; }
+  .card .big { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 6px 0 2px; }
+  .card .meta { color: var(--muted); font-size: 13px; }
+  .card .crownmark { width: 46px; height: 46px; color: #c99a2e; }
+  .row { display: flex; gap: 8px; margin-top: 18px; }
+  .btn { flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 11px 10px; font-weight: 650; cursor: pointer; }
+  .btn.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+
+  .picker { background: var(--panel); border-radius: 18px; width: min(560px, 100%); max-height: min(86dvh, 760px); display: grid;
+            grid-template-rows: auto 1fr; overflow: hidden; animation: rise .3s cubic-bezier(.2,.9,.3,1.2); }
+  .picker header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; border-bottom: 1px solid var(--line); }
+  .picker h2 { font-family: "EB Garamond", Garamond, serif; font-weight: 400; font-size: 28px; margin: 0; }
+  .picker .count { color: var(--muted); font-size: 13px; }
+  .close { border: 0; background: var(--accent-soft); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; line-height: 1; }
+  .picker .scroll { overflow-y: auto; padding: 6px 18px 20px; overscroll-behavior: contain; }
+  .picker h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 8px; font-weight: 650; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 7px; }
+  .lv { aspect-ratio: 1; border-radius: 11px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; display: grid;
+        place-items: center; align-content: center; gap: 1px; font-weight: 650; font-variant-numeric: tabular-nums; padding: 0; }
+  .lv small { font-size: 10px; font-weight: 500; color: var(--muted); }
+  .lv.done { background: var(--sw); border-color: transparent; color: #17281a; filter: var(--cell-filter); }
+  .lv.done small { color: rgba(23,40,26,.7); }
+  .lv.now { outline: 2.5px solid var(--ink); outline-offset: 1px; }
+  .lv:hover { border-color: var(--ink); }
+  .picker .foot { display: flex; justify-content: center; margin-top: 22px; }
+  .linkbtn { border: 0; background: none; color: var(--muted); text-decoration: underline; font-size: 12px; cursor: pointer; }
+  .picker .foot { gap: 18px; }
+
+  /* ---- The lock ---- */
+  .gate { min-height: calc(100dvh - 140px); display: grid; place-items: center; padding: 24px 16px; }
+  .gatecard { background: var(--panel); border-radius: 18px; padding: 26px 22px 22px; width: min(360px, 100%); display: grid; gap: 12px;
+              text-align: center; box-shadow: 0 30px 60px -34px rgba(0,0,0,.45); }
+  .gatecard .crownmark { width: 40px; height: 40px; color: #c99a2e; justify-self: center; }
+  .gatecard h2 { font-family: "EB Garamond", Garamond, serif; font-weight: 400; font-size: 30px; margin: 0; }
+  .gatecard p { margin: -6px 0 4px; color: var(--muted); font-size: 13px; }
+  .gatecard input[type=password] { font: inherit; font-size: 16px; padding: 11px 13px; border-radius: 12px; border: 1px solid var(--line);
+                                   background: var(--bg); color: var(--ink); outline: none; width: 100%; }
+  .gatecard input[type=password]:focus { border-color: var(--ink); }
+  .gatecard input.wrong { border-color: var(--bad); animation: shake .3s; }
+  .gatecard .msg { min-height: 1.2em; font-size: 13px; color: var(--bad); margin: -4px 0 0; }
+  @keyframes shake { 25% { translate: -6px; } 75% { translate: 6px; } }
+  .vh { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; opacity: 0; }
+  .syncdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin: 0 5px 1px 0; vertical-align: middle; }
+  .syncdot.ok { background: #3c9a52; } .syncdot.busy { background: #c99a2e; } .syncdot.bad { background: var(--bad); }
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="brand" href="index.html">Yusuf&rsquo;s Crowns</a>
+  <nav class="mark" aria-label="MALIK">
+    <span class="mside l">
+      <a class="mpage" href="bot.html">Bot</a>
+      <a class="mpage" href="notes.html">Notes</a>
+    </span>
+    <button class="mword" type="button" aria-expanded="false">
+      <span class="marticle">a</span><span class="mname">MALIK</span><span class="mnoun">product</span>
+    </button>
+    <span class="mside r">
+      <a class="mpage" href="index.html#preview">Yusuf&rsquo;s Preview</a>
+      <span class="mpage here" aria-current="page">Crowns</span>
+    </span>
+  </nav>
+  <button class="levels-btn" id="levelsBtn" type="button" hidden>Levels</button>
+</div>
+<script>
+  /* The same menu as the other pages: press the mark and the pages come out either side of it. */
+  (function () {
+    const mk = document.querySelector(".mark"), btn = mk.querySelector(".mword");
+    let away = null;
+    const set = open => { mk.classList.toggle("open", open); btn.setAttribute("aria-expanded", open ? "true" : "false"); };
+    btn.addEventListener("click", () => set(!mk.classList.contains("open")));
+    document.addEventListener("pointermove", e => {
+      if (!mk.classList.contains("open")) return;
+      const r = mk.getBoundingClientRect(), pad = 28;
+      const inside = e.clientX >= r.left - pad && e.clientX <= r.right + pad && e.clientY >= r.top - pad && e.clientY <= r.bottom + pad;
+      if (inside) { clearTimeout(away); away = null; return; }
+      if (away === null) away = setTimeout(() => { away = null; set(false); }, 420);
+    });
+    document.addEventListener("click", e => { if (mk.classList.contains("open") && !e.target.closest(".mark")) set(false); }, true);
+  })();
+</script>
+
+<div class="gate" id="gate" hidden>
+  <!-- A real form, so the phone offers to save the password. -->
+  <form class="gatecard" id="gateForm" method="get" autocomplete="on">
+    <svg class="crownmark" viewBox="0 0 24 24"><use href="#crown"/></svg>
+    <h2>Crowns</h2>
+    <p>Locked. Enter the password to play.</p>
+    <input class="vh" type="text" autocomplete="username" value="Yusuf" tabindex="-1" aria-hidden="true">
+    <input id="pw" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required>
+    <div class="msg" id="gateMsg" role="alert"></div>
+    <button class="btn primary" type="submit" id="unlockBtn">Unlock</button>
+  </form>
+</div>
+
+<main id="game" hidden>
+  <div class="stage">
+    <div class="head">
+      <h1 class="title"><span id="lvTitle">Level 1</span><span class="size" id="lvSize">5 × 5</span></h1>
+      <div class="clock" aria-label="Time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span id="clock">0:00</span></div>
+    </div>
+    <div class="sub">
+      <div class="diff" id="diff" aria-label="Difficulty"></div>
+      <div class="diff" id="best"></div>
+    </div>
+    <div class="board" id="board" tabindex="0" role="grid" aria-label="Puzzle board"></div>
+    <div class="tools">
+      <button class="tool" id="undo" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button>
+      <button class="tool" id="clear" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>Clear</button>
+      <button class="tool" id="hint" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V16h8v-1.3A7 7 0 0 0 12 2z"/></svg>Hint</button>
+      <button class="tool" id="auto" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 5l5 5M10 5l-5 5M14 14l5 5M19 14l-5 5M14 5l5 5M19 5l-5 5"/></svg>Auto ×</button>
+    </div>
+    <p class="rules">One crown in every row, column and colour. Crowns can&rsquo;t touch, not even diagonally.<br>Tap once for &times;, twice for a crown. Drag&nbsp;to&nbsp;cross&nbsp;out&nbsp;lots.</p>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div class="scrim" id="winScrim" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+    <svg class="crownmark" viewBox="0 0 24 24"><use href="#crown"/></svg>
+    <h2 id="winTitle">Solved</h2>
+    <div class="big" id="winTime">0:00</div>
+    <div class="meta" id="winMeta"></div>
+    <div class="row">
+      <button class="btn" id="replay" type="button">Replay</button>
+      <button class="btn primary" id="next" type="button">Next level</button>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="pickScrim" hidden>
+  <div class="picker" role="dialog" aria-modal="true" aria-labelledby="pickTitle">
+    <header><div><h2 id="pickTitle">Levels</h2><div class="count" id="pickCount"></div></div><button class="close" id="pickClose" type="button" aria-label="Close">×</button></header>
+    <div class="scroll" id="pickList"></div>
+  </div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="crown" viewBox="0 0 24 24"><path fill="currentColor" d="M2.6 7.6a1.3 1.3 0 1 1 1.9 1.2l2.6 3.6L10.9 6a1.4 1.4 0 1 1 2.2 0l3.8 6.4 2.6-3.6a1.3 1.3 0 1 1 1.9-1.2l-1.8 9.6H4.4L2.6 7.6zM4.6 18.4h14.8v2.1H4.6z"/></symbol>
+  <symbol id="x" viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+</svg>
+
+<script>
+/* The levels (and the sync key) are encrypted with the password, so the page is no use without it.
+   {salt, iter, levels: {iv, ct}, sync: {iv, ct} | null} — written by build.mjs and set-sync-token.mjs. */
+const CRYPT = {"salt":"MfOi6MjsFuZSToJElSTjIQ==","iter":310000,"levels":{"iv":"g3E32E0uCDhOF3vN","ct":"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"},"sync":null};
+
+(function unlock() {
+  "use strict";
+  const PW_KEY = "crowns:pw";
+  const $ = (id) => document.getElementById(id);
+  const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  const remembered = { get() { try { return localStorage.getItem(PW_KEY); } catch (e) { return null; } },
+                       set(v) { try { v ? localStorage.setItem(PW_KEY, v) : localStorage.removeItem(PW_KEY); } catch (e) {} } };
+
+  async function openWith(pw) {
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+    const key = await crypto.subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", salt: b64(CRYPT.salt), iterations: CRYPT.iter },
+      base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    const dec = async (env) => JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(env.iv) }, key, b64(env.ct))));
+    const levels = await dec(CRYPT.levels);       // a wrong password throws here
+    const sync = CRYPT.sync ? await dec(CRYPT.sync) : null;
+    return { levels, sync };
+  }
+
+  function start({ levels, sync }) {
+    $("gate").hidden = true;
+    $("game").hidden = false;
+    $("levelsBtn").hidden = false;
+    startGame(levels, sync, () => { remembered.set(null); location.reload(); });
+  }
+
+  function showGate() {
+    $("gate").hidden = false;
+    const form = $("gateForm"), pw = $("pw"), msg = $("gateMsg"), btn = $("unlockBtn");
+    if (!window.crypto || !crypto.subtle) { msg.textContent = "This browser can't unlock the page here — open it over https."; btn.disabled = true; return; }
+    pw.focus();
+    pw.addEventListener("input", () => { pw.classList.remove("wrong"); msg.textContent = ""; });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      btn.disabled = true; btn.textContent = "Unlocking…";
+      try {
+        const opened = await openWith(pw.value);
+        remembered.set(pw.value);
+        start(opened);
+      } catch (err) {
+        pw.classList.remove("wrong"); void pw.offsetWidth; pw.classList.add("wrong");
+        msg.textContent = "That's not the password";
+        pw.select();
+      }
+      btn.disabled = false; btn.textContent = "Unlock";
+    });
+  }
+
+  const saved = remembered.get();
+  if (saved && window.crypto && crypto.subtle) openWith(saved).then(start, () => { remembered.set(null); showGate(); });
+  else showGate();
+})();
+
+function startGame(LEVELS, SYNC, lock) {
+  "use strict";
+
+  /* Our own pastels — ten, so the biggest board has a colour for every region. */
+  const PALETTE = ["#f4b6a6", "#f7d98b", "#bfe0a6", "#9fcde8", "#cdb8ea", "#f5b3cf", "#a9ddd3", "#e3c9a8", "#b7c3f0", "#dce59a"];
+  const STORE = "crowns:v1";
+  const EMPTY = 0, X = 1, CROWN = 2;
+
+  const $ = (id) => document.getElementById(id);
+  const boardEl = $("board");
+
+  /* What's kept, here and in the synced file:
+       done[level]   = [best seconds, when it was solved]
+       boards[level] = { m: marks, t: seconds, h: hints, at: when last changed }  (a level in progress)
+       auto, cur, prefsAt — settings and the level you're on, newest wins
+       resetAt — "reset all progress": anything older than this is gone on every device */
+  const blank = () => ({ done: {}, boards: {}, auto: false, cur: 0, prefsAt: 0, resetAt: 0 });
+  function tidy(s) {
+    const out = { ...blank(), ...(s && typeof s === "object" ? s : {}) };
+    for (const k in out.done) if (!Array.isArray(out.done[k])) out.done[k] = [+out.done[k] || 1, 0];
+    for (const k in out.boards) out.boards[k] = { at: 0, ...out.boards[k] };
+    return out;
+  }
+  let save = load();
+  function load() {
+    try { return tidy(JSON.parse(localStorage.getItem(STORE))); } catch (e) { return blank(); }
+  }
+  function persist() { try { localStorage.setItem(STORE, JSON.stringify(save)); } catch (e) {} }
+  const bestOf = (i) => (save.done[i] ? save.done[i][0] : null);
+
+  /* Two copies of progress → one. Best times take the fastest, levels in progress take the most
+     recently touched, and a level's half-done board is dropped once it's been solved since. */
+  function merge(a, b) {
+    a = tidy(a); b = tidy(b);
+    const out = blank();
+    out.resetAt = Math.max(a.resetAt, b.resetAt);
+    for (const src of [a, b]) for (const k in src.done) {
+      const [t, at] = src.done[k];
+      if (at < out.resetAt && at !== 0) continue;
+      const cur = out.done[k];
+      out.done[k] = cur ? [Math.min(cur[0], t), Math.max(cur[1], at)] : [t, at];
+    }
+    for (const src of [a, b]) for (const k in src.boards) {
+      const bd = src.boards[k], cur = out.boards[k];
+      if (bd.at < out.resetAt) continue;
+      if (!cur || bd.at > cur.at || (bd.at === cur.at && (bd.t || 0) > (cur.t || 0))) out.boards[k] = bd;
+    }
+    for (const k in out.boards) if (out.done[k] && out.done[k][1] >= out.boards[k].at) delete out.boards[k];
+    const p = b.prefsAt > a.prefsAt ? b : a;
+    out.auto = !!p.auto; out.cur = p.cur; out.prefsAt = p.prefsAt;
+    return out;
+  }
+
+  /* ---- Sync: one JSON file in a private GitHub repository, read on unlock and whenever the page
+     comes back into view, written a moment after each change. Without a key it all stays on this device. ---- */
+  const sync = { on: !!(SYNC && SYNC.token), sha: null, timer: 0, busy: false, again: false, state: "off", touched: false };
+  const ghUrl = () => `https://api.github.com/repos/${SYNC.repo}/contents/${SYNC.path}`;
+  const ghHead = () => ({ Authorization: "Bearer " + SYNC.token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
+  const enc64 = (str) => btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+  const dec64 = (b) => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g, "")), (c) => c.charCodeAt(0)));
+  function setSync(state) {
+    sync.state = state;
+    const el = document.getElementById("syncLine");
+    if (el) el.innerHTML = syncText();
+  }
+  function syncText() {
+    const t = { off: ["", "Saved on this device only"], busy: ["busy", "Syncing…"], ok: ["ok", "Synced across your devices"],
+                offline: ["bad", "Offline — saved here, will sync later"], key: ["bad", "Sync key isn't working"] }[sync.state];
+    return `<span class="syncdot ${t[0]}"></span>${t[1]}`;
+  }
+  async function ghGet() {
+    const r = await fetch(ghUrl() + "?t=" + Date.now(), { headers: ghHead(), cache: "no-store" });
+    if (r.status === 404) return { data: null, sha: null };
+    if (r.status === 401 || r.status === 403) throw { key: true };
+    if (!r.ok) throw new Error("get " + r.status);
+    const j = await r.json();
+    return { data: JSON.parse(dec64(j.content)), sha: j.sha };
+  }
+  async function ghPut(data, sha, keepalive) {
+    const body = { message: "Progress", content: enc64(JSON.stringify(data)) };
+    if (sha) body.sha = sha;
+    const r = await fetch(ghUrl(), { method: "PUT", headers: { ...ghHead(), "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: !!keepalive });
+    if (r.status === 409 || r.status === 422) throw { conflict: true };
+    if (r.status === 401 || r.status === 403 || r.status === 404) throw { key: true };
+    if (!r.ok) throw new Error("put " + r.status);
+    return (await r.json()).content.sha;
+  }
+  /* Fetch the file and fold it in. Returns true if anything here changed. */
+  async function pull() {
+    const { data, sha } = await ghGet();
+    sync.sha = sha;
+    if (!data) return { changed: false, remoteSame: false };
+    const before = JSON.stringify(save);
+    save = merge(save, data);
+    const after = JSON.stringify(save);
+    if (after !== before) persist();
+    return { changed: after !== before, remoteSame: JSON.stringify(tidy(data)) === after };
+  }
+  async function push(keepalive) {
+    if (!sync.on) return;
+    if (sync.busy) { sync.again = true; return; }
+    sync.busy = true; clearTimeout(sync.timer); setSync("busy");
+    try {
+      for (let k = 0; ; k++) {
+        try { sync.sha = await ghPut(save, sync.sha, keepalive); break; }
+        catch (e) { if (!e || !e.conflict || k > 3) throw e; const p = await pull(); if (p.changed) refreshFromSync(); }
+      }
+      setSync("ok");
+    } catch (e) {
+      setSync(e && e.key ? "key" : "offline");
+      sync.timer = setTimeout(push, e && e.key ? 60000 : 15000);
+    } finally {
+      sync.busy = false;
+      if (sync.again) { sync.again = false; schedulePush(); }
+    }
+  }
+  function schedulePush(ms = 2500) { if (!sync.on) return; clearTimeout(sync.timer); sync.timer = setTimeout(push, ms); }
+  async function syncNow() {
+    if (!sync.on || sync.busy) return;
+    setSync("busy");
+    try {
+      const p = await pull();
+      if (p.changed) refreshFromSync();
+      if (!p.remoteSame) await push(); else setSync("ok");
+    } catch (e) { setSync(e && e.key ? "key" : "offline"); }
+  }
+  /* After progress arrives from another device: if nothing's been played here since, pick up where
+     that device left off; otherwise just refresh what's on screen. */
+  function refreshFromSync() {
+    if (press || won) return;
+    if (!sync.touched) { openLevel(startLevel(), true); return; }
+    $("best").textContent = bestOf(L) != null ? `Best ${fmt(bestOf(L))}` : "";
+  }
+  async function firstPull() { await syncNow(); }
+  document.addEventListener("visibilitychange", () => {
+    if (!sync.on) return;
+    if (document.hidden) { if (sync.timer && !sync.busy) push(true); }
+    else { sync.touched = false; syncNow(); }
+  });
+  setSync(sync.on ? "busy" : "off");
+
+  /* ---- Level state ---- */
+  let L, n, reg, sol, marks, cells, history, elapsed, running, won, hints, cursor = 0;
+
+  function colourFor(lv, g) { return PALETTE[(g + lv * 3) % PALETTE.length]; }
+
+  function openLevel(i, quiet) {
+    L = i;
+    if (save.cur !== i) { save.cur = i; save.prefsAt = Date.now(); if (!quiet) schedulePush(); }
+    const [size, regions, solution, score] = LEVELS[i];
+    n = size; reg = [...regions].map((c) => c.charCodeAt(0) - 97); sol = [...solution].map(Number);
+    const kept = save.boards[i];
+    marks = kept && kept.m && kept.m.length === n * n ? [...kept.m].map(Number) : new Array(n * n).fill(EMPTY);
+    elapsed = kept ? kept.t || 0 : 0; hints = kept ? kept.h || 0 : 0;
+    history = []; won = false; running = false; cursor = 0;
+
+    $("lvTitle").textContent = `Level ${i + 1}`;
+    $("lvSize").textContent = `${n} × ${n}`;
+    const stars = score < 20 ? 1 : score < 40 ? 2 : score < 65 ? 3 : 4;
+    $("diff").innerHTML = [1, 2, 3, 4].map((k) => `<i class="${k <= stars ? "on" : ""}"></i>`).join("") +
+      `<span style="margin-left:5px">${["", "Gentle", "Steady", "Tricky", "Fiendish"][stars]}</span>`;
+    const best = bestOf(i);
+    $("best").textContent = best != null ? `Best ${fmt(best)}` : "";
+
+    buildBoard();
+    boardEl.classList.remove("won");
+    render();
+    tickClock();
+    persist();
+  }
+
+  function buildBoard() {
+    boardEl.style.setProperty("--n", n);
+    boardEl.innerHTML = "";
+    const W = "var(--wall)", S = "var(--seam)", thick = 2.5, thin = 1;
+    cells = [];
+    for (let i = 0; i < n * n; i++) {
+      const r = (i / n) | 0, c = i % n, g = reg[i];
+      const el = document.createElement("div");
+      el.className = "cell";
+      el.setAttribute("role", "gridcell");
+      el.dataset.i = i;
+      el.style.setProperty("--c", colourFor(L, g));
+      el.style.setProperty("--r", r);
+      // Walls between regions are drawn thick, seams inside a region thin.
+      const sh = [];
+      if (c < n - 1) sh.push(reg[i + 1] !== g ? `inset -${thick / 2}px 0 0 ${W}` : `inset -${thin / 2}px 0 0 ${S}`);
+      if (c > 0) sh.push(reg[i - 1] !== g ? `inset ${thick / 2}px 0 0 ${W}` : `inset ${thin / 2}px 0 0 ${S}`);
+      if (r < n - 1) sh.push(reg[i + n] !== g ? `inset 0 -${thick / 2}px 0 ${W}` : `inset 0 -${thin / 2}px 0 ${S}`);
+      if (r > 0) sh.push(reg[i - n] !== g ? `inset 0 ${thick / 2}px 0 ${W}` : `inset 0 ${thin / 2}px 0 ${S}`);
+      el.style.setProperty("--walls", sh.join(",") || "none");
+      boardEl.appendChild(el);
+      cells.push(el);
+    }
+  }
+
+  /* ---- Rules: which crowns clash, and what they rule out ---- */
+  function analyse() {
+    const crowns = [];
+    marks.forEach((m, i) => { if (m === CROWN) crowns.push(i); });
+    const bad = new Set(), hatch = new Set(), covered = new Set();
+    const groups = [(i) => "r" + ((i / n) | 0), (i) => "c" + (i % n), (i) => "g" + reg[i]];
+    for (const key of groups) {
+      const by = {};
+      for (const i of crowns) (by[key(i)] ||= []).push(i);
+      for (const k in by) if (by[k].length > 1) {
+        by[k].forEach((i) => bad.add(i));
+        for (let j = 0; j < n * n; j++) if (key(j) === k) hatch.add(j);
+      }
+    }
+    for (const a of crowns) for (const b of crowns) {
+      if (a >= b) continue;
+      const dr = Math.abs(((a / n) | 0) - ((b / n) | 0)), dc = Math.abs((a % n) - (b % n));
+      if (dr <= 1 && dc <= 1) { bad.add(a); bad.add(b); hatch.add(a); hatch.add(b); }
+    }
+    for (const a of crowns) {
+      const ar = (a / n) | 0, ac = a % n;
+      for (let j = 0; j < n * n; j++) {
+        if (j === a) continue;
+        const jr = (j / n) | 0, jc = j % n;
+        if (jr === ar || jc === ac || reg[j] === reg[a] || (Math.abs(jr - ar) <= 1 && Math.abs(jc - ac) <= 1)) covered.add(j);
+      }
+    }
+    return { crowns, bad, hatch, covered };
+  }
+
+  const ICON_CROWN = '<svg class="crown" viewBox="0 0 24 24"><use href="#crown"/></svg>';
+  const ICON_X = '<svg class="x" viewBox="0 0 10 10"><use href="#x"/></svg>';
+  let shown = [];
+
+  function render() {
+    const { crowns, bad, hatch, covered } = analyse();
+    for (let i = 0; i < n * n; i++) {
+      const el = cells[i], m = marks[i];
+      const auto = save.auto && m === EMPTY && covered.has(i);
+      const look = m === CROWN ? "C" : m === X ? "X" : auto ? "A" : "";
+      if (shown[i] !== look) {
+        el.innerHTML = look === "C" ? ICON_CROWN : look ? ICON_X : "";
+        shown[i] = look;
+      }
+      el.classList.toggle("auto", look === "A");
+      el.classList.toggle("bad", bad.has(i));
+      el.classList.toggle("hatch", hatch.has(i));
+      el.classList.toggle("cursor", i === cursor);
+      el.setAttribute("aria-label", `Row ${((i / n) | 0) + 1}, column ${(i % n) + 1}${m === CROWN ? ", crown" : m === X ? ", crossed" : ""}`);
+    }
+    $("undo").disabled = !history.length || won;
+    $("auto").setAttribute("aria-pressed", save.auto ? "true" : "false");
+    if (!won && crowns.length === n && bad.size === 0) win();
+  }
+
+  /* ---- Moves ---- */
+  function snapshot() { history.push(marks.join("")); if (history.length > 400) history.shift(); }
+  function changed() {
+    if (!running && !won) { running = true; lastTick = performance.now(); }
+    save.boards[L] = { m: marks.join(""), t: Math.floor(elapsed), h: hints, at: Date.now() };
+    sync.touched = true;
+    persist();
+    schedulePush();
+    render();
+  }
+  function cycle(i) { marks[i] = (marks[i] + 1) % 3; }
+
+  /* Tap: empty → × → crown → empty. Drag: paints ×s over empty cells (or wipes them,
+     if the drag began on a ×). Crowns are never touched by a drag. */
+  let press = null;
+  boardEl.addEventListener("pointerdown", (e) => {
+    if (won || e.button > 0) return;
+    const el = e.target.closest(".cell"); if (!el) return;
+    e.preventDefault();
+    boardEl.classList.remove("kbd");
+    boardEl.focus({ preventScroll: true });
+    const i = +el.dataset.i;
+    press = { id: e.pointerId, start: i, last: i, dragging: false, mode: marks[i] === X ? "wipe" : "paint", before: marks.join("") };
+    cursor = i;
+    boardEl.setPointerCapture(e.pointerId);
+  });
+  boardEl.addEventListener("pointermove", (e) => {
+    if (!press || e.pointerId !== press.id) return;
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const el = hit && hit.closest && hit.closest(".cell");
+    if (!el || !boardEl.contains(el)) return;
+    const i = +el.dataset.i;
+    if (i === press.last) return;
+    if (!press.dragging) { press.dragging = true; paint(press.start); }
+    // A quick finger skips cells between move events, so fill in the straight line between them.
+    const r0 = (press.last / n) | 0, c0 = press.last % n, r1 = (i / n) | 0, c1 = i % n;
+    const steps = Math.max(Math.abs(r1 - r0), Math.abs(c1 - c0));
+    for (let s = 1; s <= steps; s++) paint(Math.round(r0 + ((r1 - r0) * s) / steps) * n + Math.round(c0 + ((c1 - c0) * s) / steps));
+    press.last = i; cursor = i;
+    render();
+  });
+  function paint(i) {
+    if (press.mode === "paint" && marks[i] === EMPTY) marks[i] = X;
+    else if (press.mode === "wipe" && marks[i] === X) marks[i] = EMPTY;
+  }
+  function endPress(e) {
+    if (!press || e.pointerId !== press.id) return;
+    if (!press.dragging) { history.push(press.before); cycle(press.start); }
+    else if (marks.join("") !== press.before) history.push(press.before);
+    press = null;
+    changed();
+  }
+  boardEl.addEventListener("pointerup", endPress);
+  boardEl.addEventListener("pointercancel", endPress);
+  boardEl.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  /* Keyboard: arrows move, space/enter cycles, X marks, C crowns, Backspace clears, Z undoes. */
+  boardEl.addEventListener("keydown", (e) => {
+    if (won) return;
+    boardEl.classList.add("kbd");
+    const r = (cursor / n) | 0, c = cursor % n;
+    const moves = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+    if (moves[e.key]) {
+      e.preventDefault();
+      const [dr, dc] = moves[e.key];
+      cursor = Math.max(0, Math.min(n - 1, r + dr)) * n + Math.max(0, Math.min(n - 1, c + dc));
+      render(); return;
+    }
+    const k = e.key.toLowerCase();
+    const set = (v) => { e.preventDefault(); snapshot(); marks[cursor] = v; changed(); };
+    if (k === " " || k === "enter") { e.preventDefault(); snapshot(); cycle(cursor); changed(); }
+    else if (k === "x") set(marks[cursor] === X ? EMPTY : X);
+    else if (k === "c" || k === "q") set(marks[cursor] === CROWN ? EMPTY : CROWN);
+    else if (k === "backspace" || k === "delete") set(EMPTY);
+    else if (k === "z" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); undo(); }
+  });
+
+  function undo() {
+    if (!history.length || won) return;
+    marks = [...history.pop()].map(Number);
+    changed();
+  }
+  $("undo").addEventListener("click", undo);
+  $("clear").addEventListener("click", () => {
+    if (won || marks.every((m) => m === EMPTY)) return;
+    snapshot(); marks.fill(EMPTY); changed(); toast("Cleared — Undo brings it back");
+  });
+  $("auto").addEventListener("click", () => {
+    save.auto = !save.auto; save.prefsAt = Date.now(); persist(); schedulePush(); render();
+    toast(save.auto ? "Auto × on: crowns cross out what they rule out" : "Auto × off");
+  });
+
+  /* Hint: first points out a mark that's wrong; if everything so far is right, places one crown. */
+  $("hint").addEventListener("click", () => {
+    if (won) return;
+    const wrong = [];
+    marks.forEach((m, i) => {
+      const isSol = sol[(i / n) | 0] === i % n;
+      if ((m === CROWN && !isSol) || (m === X && isSol)) wrong.push(i);
+    });
+    if (wrong.length) {
+      const i = wrong.find((j) => marks[j] === CROWN) ?? wrong[0];
+      flash(i);
+      toast(marks[i] === CROWN ? "That crown doesn't belong there" : "A crown belongs under that ×");
+      return;
+    }
+    const rows = [...Array(n).keys()].filter((r) => marks[r * n + sol[r]] !== CROWN);
+    if (!rows.length) return;
+    const r = rows[Math.floor(Math.random() * rows.length)], i = r * n + sol[r];
+    snapshot(); marks[i] = CROWN; hints++; flash(i); changed();
+  });
+  function flash(i) { const el = cells[i]; el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+
+  /* ---- Clock ---- */
+  let lastTick = 0;
+  function fmt(s) { s = Math.floor(s); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, "0")}`; }
+  function tickClock() { $("clock").textContent = fmt(elapsed); }
+  setInterval(() => {
+    if (!running || won || document.hidden) return;
+    const now = performance.now();
+    elapsed += (now - lastTick) / 1000; lastTick = now;
+    tickClock();
+    if (save.boards[L]) { save.boards[L].t = Math.floor(elapsed); persist(); }
+  }, 250);
+  document.addEventListener("visibilitychange", () => { lastTick = performance.now(); });
+
+  /* ---- Winning ---- */
+  function win() {
+    won = true; running = false;
+    const t = Math.max(1, Math.floor(elapsed));
+    const prev = bestOf(L);
+    const record = prev == null || t < prev;
+    save.done[L] = [record ? t : prev, Date.now()];
+    delete save.boards[L];
+    persist();
+    push();
+    boardEl.classList.add("won");
+    $("undo").disabled = true;
+    $("winTime").textContent = fmt(t);
+    const bits = [];
+    if (prev == null) bits.push(`Level ${L + 1} done`);
+    else bits.push(record ? `New best — was ${fmt(prev)}` : `Best ${fmt(prev)}`);
+    if (hints) bits.push(`${hints} hint${hints > 1 ? "s" : ""}`);
+    bits.push(`${Object.keys(save.done).length} of ${LEVELS.length} solved`);
+    $("winMeta").textContent = bits.join(" · ");
+    $("next").textContent = L + 1 < LEVELS.length ? "Next level" : "All levels";
+    setTimeout(() => { if (won) { $("winScrim").hidden = false; $("next").focus(); } }, 900);
+  }
+  $("next").addEventListener("click", () => {
+    $("winScrim").hidden = true;
+    if (L + 1 < LEVELS.length) openLevel(L + 1); else showPicker();
+  });
+  $("replay").addEventListener("click", () => {
+    $("winScrim").hidden = true;
+    delete save.boards[L];
+    openLevel(L);
+  });
+
+  /* ---- Level picker ---- */
+  function showPicker() {
+    const done = Object.keys(save.done).length;
+    $("pickCount").innerHTML = `${done} of ${LEVELS.length} solved · <span id="syncLine">${syncText()}</span>`;
+    syncNow();
+    let html = "", lastN = 0;
+    LEVELS.forEach(([size], i) => {
+      if (size !== lastN) { if (lastN) html += "</div>"; html += `<h3>${size} × ${size}</h3><div class="grid">`; lastN = size; }
+      const best = bestOf(i), going = save.boards[i];
+      const cls = ["lv", best != null ? "done" : "", i === L ? "now" : ""].join(" ");
+      const note = best != null ? fmt(best) : going ? "…" : "";
+      html += `<button class="${cls}" data-lv="${i}" style="--sw:${colourFor(i, 0)}" type="button" aria-label="Level ${i + 1}${best != null ? ", solved" : ""}">${i + 1}${note ? `<small>${note}</small>` : ""}</button>`;
+    });
+    html += `</div><div class="foot"><button class="linkbtn" id="wipe" type="button">Reset all progress</button><button class="linkbtn" id="lockBtn" type="button">Lock this device</button></div>`;
+    $("pickList").innerHTML = html;
+    $("pickScrim").hidden = false;
+    const now = $("pickList").querySelector(".now");
+    if (now) now.scrollIntoView({ block: "center" });
+  }
+  $("levelsBtn").addEventListener("click", showPicker);
+  $("pickClose").addEventListener("click", () => { $("pickScrim").hidden = true; });
+  $("pickScrim").addEventListener("click", (e) => {
+    if (e.target === $("pickScrim")) { $("pickScrim").hidden = true; return; }
+    const b = e.target.closest(".lv");
+    if (b) { $("pickScrim").hidden = true; $("winScrim").hidden = true; openLevel(+b.dataset.lv); return; }
+    if (e.target.id === "wipe" && confirm("Reset every level's times and progress?")) {
+      const now = Date.now();
+      save = { ...blank(), auto: save.auto, prefsAt: now, resetAt: now }; persist(); push();
+      $("pickScrim").hidden = true; openLevel(0);
+    }
+    if (e.target.id === "lockBtn") {
+      if (sync.timer && !sync.busy) push(true);
+      lock();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { $("pickScrim").hidden = true; }
+  });
+
+  let toastT;
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1900);
+  }
+
+  /* Start where you left off: the level you were on, or the first one not yet solved. */
+  function startLevel() {
+    const cur = Number.isInteger(save.cur) && save.cur >= 0 && save.cur < LEVELS.length ? save.cur : 0;
+    const first = LEVELS.findIndex((_, i) => save.done[i] == null);
+    return save.done[cur] != null && !save.boards[cur] && first >= 0 ? first : cur;
+  }
+  openLevel(startLevel(), true);
+  if (sync.on) firstPull();
+}
+</script>
+</body>
+</html>
