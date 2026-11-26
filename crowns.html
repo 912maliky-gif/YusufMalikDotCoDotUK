@@ -78,30 +78,6 @@
   .diff i.on { background: var(--ink); }
   .sub { display: flex; justify-content: space-between; align-items: center; margin-top: -4px; }
 
-  .board { --n: 7; width: var(--board); aspect-ratio: 1; display: grid;
-           /* minmax(0, …): every square is exactly 1/n of the board, whatever is placed in it */
-           grid-template-columns: repeat(var(--n), minmax(0, 1fr)); grid-template-rows: repeat(var(--n), minmax(0, 1fr));
-           border: 3px solid var(--wall); border-radius: 12px; overflow: hidden; background: var(--wall);
-           touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-           box-shadow: 0 10px 30px -18px rgba(23, 40, 26, .55); position: relative; outline: none; }
-  .cell { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--c); filter: var(--cell-filter); display: grid; place-items: center; cursor: pointer;
-          box-shadow: var(--walls); }
-  .cell::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
-  .cell.hatch::after { background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--bad) 32%, transparent) 5px 8px); }
-  .cell.cursor { outline: 3px solid var(--ink); outline-offset: -5px; z-index: 1; }
-  .board:not(.kbd) .cell.cursor, .board:not(:focus) .cell.cursor { outline: none; }
-  .cell svg { position: absolute; left: 19%; top: 19%; width: 62%; height: 62%; pointer-events: none; }
-  .cell .x { left: 33%; top: 33%; width: 34%; height: 34%; color: rgba(23, 40, 26, .62); }
-  .cell.auto .x { color: rgba(23, 40, 26, .3); }
-  .cell .crown { color: #17281a; animation: pop .22s cubic-bezier(.3,1.6,.5,1); }
-  .cell.bad .crown { color: var(--bad); }
-  .cell.flash { animation: flash .9s ease 2; }
-  @keyframes pop { from { transform: scale(.4); opacity: .3; } }
-  @keyframes flash { 50% { box-shadow: var(--walls), inset 0 0 0 999px rgba(255,255,255,.65); } }
-  .board.won .cell { cursor: default; }
-  .board.won .crown { animation: bounce .6s cubic-bezier(.3,1.6,.5,1) both; animation-delay: calc(var(--r) * 70ms); }
-  @keyframes bounce { 40% { transform: translateY(-18%) scale(1.15); } }
-
   .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .tool { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 4px 8px; cursor: pointer;
           display: grid; justify-items: center; gap: 3px; font-size: 12px; font-weight: 600; }
@@ -166,11 +142,36 @@
   .vh { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; opacity: 0; }
   .syncdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin: 0 5px 1px 0; vertical-align: middle; }
   .syncdot.ok { background: #3c9a52; } .syncdot.busy { background: #c99a2e; } .syncdot.bad { background: var(--bad); }
+
+
+  .board { --n: 7; width: var(--board); aspect-ratio: 1; display: grid;
+           /* minmax(0, …): every square is exactly 1/n of the board, whatever is placed in it */
+           grid-template-columns: repeat(var(--n), minmax(0, 1fr)); grid-template-rows: repeat(var(--n), minmax(0, 1fr));
+           border: 3px solid var(--wall); border-radius: 12px; overflow: hidden; background: var(--wall);
+           touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+           box-shadow: 0 10px 30px -18px rgba(23, 40, 26, .55); position: relative; outline: none; }
+  .cell { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--c); filter: var(--cell-filter); display: grid; place-items: center; cursor: pointer;
+          box-shadow: var(--walls); }
+  .cell::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+  .cell.hatch::after { background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--bad) 32%, transparent) 5px 8px); }
+  .cell.cursor { outline: 3px solid var(--ink); outline-offset: -5px; z-index: 1; }
+  .board:not(.kbd) .cell.cursor, .board:not(:focus) .cell.cursor { outline: none; }
+  .cell svg { position: absolute; left: 19%; top: 19%; width: 62%; height: 62%; pointer-events: none; }
+  .cell .x { left: 33%; top: 33%; width: 34%; height: 34%; color: rgba(23, 40, 26, .62); }
+  .cell.auto .x { color: rgba(23, 40, 26, .3); }
+  .cell .crown { color: #17281a; animation: pop .22s cubic-bezier(.3,1.6,.5,1); }
+  .cell.bad .crown { color: var(--bad); }
+  .cell.flash { animation: flash .9s ease 2; }
+  @keyframes pop { from { transform: scale(.4); opacity: .3; } }
+  @keyframes flash { 50% { box-shadow: var(--walls), inset 0 0 0 999px rgba(255,255,255,.65); } }
+  .board.won .cell { cursor: default; }
+  .board.won .crown { animation: bounce .6s cubic-bezier(.3,1.6,.5,1) both; animation-delay: calc(var(--r) * 70ms); }
+  @keyframes bounce { 40% { transform: translateY(-18%) scale(1.15); } }
 </style>
 </head>
 <body>
 <div class="top">
-  <a class="brand" href="index.html">Yusuf&rsquo;s Crowns</a>
+  <a class="brand" href="games.html">&lsaquo; Games</a>
   <nav class="mark" aria-label="MALIK">
     <span class="mside l">
       <a class="mpage" href="bot.html">Bot</a>
@@ -181,7 +182,7 @@
     </button>
     <span class="mside r">
       <a class="mpage" href="index.html#preview">Yusuf&rsquo;s Preview</a>
-      <span class="mpage here" aria-current="page">Crowns</span>
+      <a class="mpage" href="games.html">Games</a>
     </span>
   </nav>
   <button class="levels-btn" id="levelsBtn" type="button" hidden>Levels</button>
@@ -204,18 +205,6 @@
   })();
 </script>
 
-<div class="gate" id="gate" hidden>
-  <!-- A real form, so the phone offers to save the password. -->
-  <form class="gatecard" id="gateForm" method="get" autocomplete="on">
-    <svg class="crownmark" viewBox="0 0 24 24"><use href="#crown"/></svg>
-    <h2>Crowns</h2>
-    <p>Locked. Enter the password to play.</p>
-    <input class="vh" type="text" autocomplete="username" value="Yusuf" tabindex="-1" aria-hidden="true">
-    <input id="pw" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required>
-    <div class="msg" id="gateMsg" role="alert"></div>
-    <button class="btn primary" type="submit" id="unlockBtn">Unlock</button>
-  </form>
-</div>
 
 <main id="game" hidden>
   <div class="stage">
@@ -268,22 +257,27 @@
 <script>
 /* [size, regions (row by row, one letter per cell), solution (crown's column in each row), difficulty score] */
 const LEVELS = [[5,"aabbcbbbcccccccdeccdddddd","02413",10],[5,"aabccaacccdacccdacecaaccc","24031",10],[5,"aaaaaabbcabbcccbdeecbbeec","02413",10],[5,"aaaaabaaacbddeceeeeceeeee","30241",21],[5,"aaaaaaaabaacabaaddbedddde","03142",21],[5,"aaabbcbbbbccdbbceebbceeeb","14203",21],[5,"aaaabaaabbaaaccdaaccdaeec","41302",47],[5,"aaaaabacaabccaabbdeadddee","42031",50],[5,"aaaabaaacbdcccbddcceddcee","14203",60],[5,"aaabbabbbcaaabcddddcdeeee","02413",79],[6,"abccccbbdcccbbdeccbbddfcbdddfcdddddc","053142",10],[6,"aaaabbaccdbeaceeeeaeeefeaaeeffaaaaaa","531420",10],[6,"aabbbbcaadabaaadaaaaaaaeaaafaaaaaffa","203514",10],[6,"aaabccaabbddaddddeadddddaadfffaaaaff","425130",10],[6,"aaabbbaaabbbcaadeecaadeeccceeefcccee","413520",10],[6,"aaaabbcdaacecdcccecdcccecccccefffcce","425130",21],[6,"abbbbbaccbbbcccdbbcccccbcccccefffffe","403152",21],[6,"aaaaaaaaabbacaadeacaadeeaaddeeaafdde","140352",21],[6,"aaabbcaaacccaaaaccadcccceddfcceefffc","425130",34],[6,"abbbbcabbdddaabbbebbbeeebbbbeebbfbee","531402",46],[6,"aabbbbaaabcbaaabcbddaebbddaeebdffeeb","524031",50],[6,"aaaabbcdaebbfddeebffdeeeffddeefdddee","305142",53],[6,"aabcccabbcccaabcdcaaaadcaeeeecfeeecc","524130",59],[6,"aaaaabaaaabbcddbbbccebeefceeeeffeeee","352041",64],[6,"aabbbbaabbccaaddccaaecccaeeccfeeeecf","302415",75],[7,"abacddeaaacdfeaddddfeaadddffaadddffaaagggfaaggggf","1362504",10],[7,"abbaaaaaaaaaccdddddccdddddeefdddeeedddddeeggdddee","2463051",10],[7,"aaaabbbaabbbbbacbbbbbabbbddbbbebdfbbbffffbbbggfff","0614253",10],[7,"abbbcccabbbbccaabbbdcaeefffcaaaafffaggafffaaaaaaa","6351420",21],[7,"abbbbbbaabbbbcadbbbbbadddbbdeedddddeedddffggggfff","4603152",21],[7,"abbbbcbaabbbbbaabdbbbadddbbeaddfeeeadeeeeeaggeeee","5041362",21],[7,"aabccccaabbdccddbdddddddddeeddddeeedddfeeegdffeee","1524630",21],[7,"abccccdacccccdaacceddaaaeeedaaaeefdgaaeeedaaaaaee","1463502",21],[7,"aaaaaabccaaabbccaaabdccaaeedfcgeeedfeeeeeeeeeeeee","3516204",21],[7,"aaaaaabaccaabbadcabbbddeebbbfeeeebbfeeebbbeeeegbb","5261304",22],[7,"abbbbccabbbbbcabbbbbdaaaabddaaaaeeeffgggeefffffff","5361420",35],[7,"abbccccddbbbccddbbbccddebfccdeecccceeecgcceeegggg","0314625",47],[7,"aabbbccaabbbccaacccccaaccdcceeecdffeeecdffeeeeggg","3024615",50],[7,"aaabaccaaaaaccaaaacccadaaeeeaffaeeeaffaggefffeeee","3051642",53],[7,"aaaabbbaaaabccddaaaeefdeeeeeffeegggfeeeeeeeeeeeee","4631502",54],[7,"aabbbbbaaaabbcaaadeccaafdcccaffdcccffgdcccffgcccc","5146302",56],[7,"aaaabaaaaacbaaaaacbaadaaaaaaeeeaffaggegfffgggggff","4630251",56],[7,"aabccdeabbcddeabbcdddaffcgggaafcccgaaaccccaaacccc","6415203",60],[7,"aaaaaabaacdabbaaddabeaaddbbeaafdgeeafffggeafffffe","0253641",63],[7,"aaabbcdaaabcccaabbcceaaebeeeaeebeefeeeeeffgggggff","6403152",79],[8,"aaaaaaaabbbcccaabdbbceaabbbbeeeafffeeeeefgfheeeeggfhheeegffffeee","75136240",10],[8,"aaaaaaaaabbccadaaaccccdaaecddddaeecdcffagecccffaccccfffahhhhffff","72614053",10],[8,"aaaaaaabaccaacabaaccdcabaaaccccbaeccccfbaeeegggbaaegggggaheeeggg","72406351",10],[8,"aaaaaaaaabaabaaaabbbbcaadeebccafdebbccgfddbccggghhbbhhhghhhhhggg","31527046",21],[8,"aaaabbbbaabbbcbbdddbbbeedddebbbeddeeeeeedeeddfgeddedffgghdddfffg","25371640",21],[8,"abaaccccaaaaaaccccccccccddeccffgdeeehffgfeehhhfffffffhffffffffff","14607253",21],[8,"aaaaabbbacaaabbcaccccbbcadcccbbcddeeccccddeccfdcgddddddcgggggdhc","72413506",21],[8,"abbbbcccaaabbdcceabfbbbceebbbccceebbbggceeegggccehhhhggcehggggcc","05374261",21],[8,"abbbcccdebbbccddebbbccdceebcccccbebbcffcbbbcccfcbbbcghfcbbgggfff","07416253",21],[8,"abbbbbccabbbdcccababbbbcaaaabebbaaeaaefgaheaeefgaheeeeggahhheggg","24706135",22],[8,"aabbbbbbaccccbbbaccccbbbaaadeebbfffdeggbfgfgggbbgggggggbghhgbbbb","14753062",22],[8,"aabbbbbbacbbbdbbacbbdddeafffdggeafafdggeafaaddggaaaadddhaaaaddhh","31725046",35],[8,"aabaaaaaaabaccddeaaacdddffaacccdfaafffcdffffffccfggghffcfffggggc","25037146",47],[8,"abbbbbbbaaabcbbbdddcceebfdddddgbfddggdgbfffggggbfhfgggbbfhfggggg","04637251",48],[8,"abbbbbbbaaabbbccdabbebcfdaaaebbfdddaeebgedeheebgedeeegggeeeeeeeg","46170352",49],[8,"abbbccccabbcccddabbbccccabbeeeccaabbcccfgaabacffgaaaaccfgaaahfff","27531604",50],[8,"aaabbbbcaaaaabbcaadabbccaedddbccdddbbbcfdddbbbbfddgbhhffdggbbhhf","53617042",51],[8,"aaabbbcbaaaabbbbaaaaddddaeaaffddaeddddddggddddddgggghhddgghhhddd","64251703",53],[8,"aabbccccabbbccbcdbbbbcbcddbbbbbeddddbeeedfddbeeefffdgegeffhhgggg","50473162",56],[8,"abaaaacdaaaaaccdeaaacccdeeeaeecdefeeegcefffeeecefffeeeeehhfeeeee","16375240",60],[8,"abbbccccaabcddccaabcccccaabcefccaaggefcfaahhefffaahhefffaaaaaaaf","15742630",63],[8,"aaaaaaaaaaaaabccccccaccdeccccccdcccfccddgggfgccchhgggggchhggcccc","25703641",68],[8,"abbbccccaabcccccbbbcccdebbbbddddbbffdggdbbbfdhhdfbffddhdffffhhhh","03716425",71],[8,"abbbcbbdaabbbbbdabbbbbbbaeeebbffaaaefbbfggaffbffgggfffffhhgggfff","47531620",75],[8,"abbbbbbbaabcdbbbaedcddfbaeddddfbaaddddfbaaaagdfbaaaahfffaaaahhhf","73162405",95],[9,"aabbcccccadaaeecccaaaeeccccaaaeeeeccaeaecccccaeeeeefccaeegggcccaahhggghcaahhhhhhi","317506428",10],[9,"aabccccccaaaaacdccaaaddcdcceaaddcdcfeadddgdffeddddddddhhddddddihhhdddiiihhhhddddi","271850463",10],[9,"abcccccccaccadddccaaaaaddecaddadddecaaddddeecaaddfeegcaddddddgcaaaddhggcaaiiigggg","180264753",21],[9,"abbaaaaacaaaadaaccaaeedfcccaaedddcdcagddhhddcggddhdddiggddddidiggddidiiigggdiiiii","135284706",21],[9,"aaaaaaaaaaaaabbcacaaaccccccaaccdceecacccdddeefcfcdddddfffccddghffddcdgggiffdddggg","153742860",21],[9,"aaaabbbbbaccdbbeebaadddeeeeaadddffdeaddadfddeaaaaddddeagaeeedeeagaeheeeehhhhhhiee","720358146",21],[9,"aaaabccccdaaabbeccdaaafccccdddffcfccfffffcffcfffffffccffgfffhhcfggfhfhhcgggihhhhh","462085713",22],[9,"aaabbbbbcdeaaaabbcdeeebabccdeebbbbbcdddbbbbbbdffffbbbbddfffgbbgghhgfggggggggggggi","647203518",22],[9,"abbbcccddabbcccccdaabaacccdaaaacccedfaaccgeedaaaaageeeaaaaggheegaaggghiigggghhhhi","138206475",33],[9,"abbbccdddaabccccddabbcbbcdefbbbbbccefffffggcehhheecccehhheeeceehhheeiieeeeeeeeeee","814057263",35],[9,"abcccccccabbcdccccabddddcecabddeeeecaaddddfeeaaaaafffeaaagafeeeggggaaheeigggahhhh","824715360",48],[9,"aaaaaaaabaaccaaadbeecfffadbcccgfffbbggggfffhbgggffhhhbggffffhbbgffffihbbbbbbbbbbb","370246158",48],[9,"aaaaabbbbccccabbdbccccabbbbeeeebbbbbfeeeebbbbfeeebbbbbggehhhhbieeeheehiieeeeeiiii","472503168",51],[9,"abbbbbccdaaabccceeaaaacffeeagaeccceeagheccceeaggeeeeeeaggggeeiiggiieeeeigiiiiiiii","836420517",54],[9,"aaaaaaaaaaaaabbbaaaccdddbbaeccddddbbecddfddbgcchfffffihhhhhifiihhhhhiiiihhhhhhhii","253081647",59],[9,"abbbbbbccabbbdddccebbbdfddgedbbdfddfeddddfddfeeeedffffeehhhhhiihhhhhiiiihhhiiiiii","708246135",69],[9,"aaabbcccdaaaabbbcdeffadbbbdeffdddbbdgffddddddgdddgddhdgggggddhhgggggdhhhgggggggih","520613847",73],[9,"aaaabccccadaebbbccadaeecccfadaegggffadaaafffhadaaaaahhddaaihhhhdiiiiihhhiiiihhhhh","483572061",89],[10,"aaaaaabbbcddaaaabccceddddabcccefdgaacchceffffaiihcejfeffiicceeeeeficcceeieiiiiiceeiiiicciceeeccccccc","4063815792",10],[10,"aaaaabbbbbaccdabeeeecccdabefeecdddabeeeeccdddbggeegggddhgggegddddhgiiigdddjgggiiggddggggiigggggiiiii","6079152483",21],[10,"aaaabbccccaaaabbbbbcdaaabbbcccaaaabebcbcaaeaeebcbcaeeeefbbbcaghhffbcccggghfffficghhhccjficghhhhccccc","3709251864",21],[10,"abbbbbbbbbcbcbcccdbbcccceecddbcffccccbdbccffcbbbbbccfccffghhccfccffhhicfffffhhhicfjffhhfhiffffffffii","0358179624",21],[10,"aabbbcccdeaaaabcceeeabbbbffeeeaabbbffggeabbhbffgggahhhhhfgggahiihhggggahihhhhhhgjhihhhgggghhiiiiiiii","8571469302",22],[10,"abbbbbbbbbccbbddddbeccccddbbbefccddbbgggffcddddghgffidhddhhhiiihhdhhjjihiihdhhhjihihhdhhjjhhhhhhhhhj","0962715384",35],[10,"aaaaabbbbbaacbbbddbbaeeedddddbeeeddfdgdbheedffdgibhhhdffdiibhddddffibbhddddddbbdhddhddddddhhhhdjdddd","4297186305",51],[10,"aaaaabbcccadaaeebbccafaaeebbbcaffeebbcccfffghhbbicfhhhhhhbicfhhjjhhbccffhhjhjbcjhhhjjjjbcjhhhhhhjjjj","4159380726",54],[10,"abbbbbccddabbeebcddfabbbebbfffaebbebbfgfeeeeeebfffeheeebbbffihebebbbffiiibbbbbffiiijjbfbffijjjjjffff","9608315247",57],[10,"aaaaaabbbbcadacaebbbcccccbebbbcfccbbbbggffccbbbbggfhhcbbhhggffhcchhhggifhccchhgghhhhcchggghhhhhhhjjg","5261794038",65],[10,"aaabbcccccaabbbbbbddaeeefbfbddaefffbfffdaeeefffdfdaeeffffdddgffffffdddgfggffghhhggggggghgigggjjggggi","6185240793",73],[10,"aaabccccddabbbbccccdaebbbffccdaebbbfcccdaeebbffffdaeefffgdddaeehiigdddaaeiiiggddaaaigggggdaaiiiiggjj","4160283579",99]];
-/* The password is just a door: its fingerprint is checked, and once in, this device stays in.
-   `sync` is only set once there's a sync key (see set-sync-token.mjs). */
-const LOCK = {"hash":"0d444a2fab722e9371330219820f5816b18ffb8fa9fab2b27190304051b4e030","salt":"/O7CEodHVe5cQyuAvTrDyg==","iter":310000,"sync":null};
+/* The password's fingerprint (and the sealed sync key, once there is one) — shared by every game. */
+const LOCK = {"hash":"0d444a2fab722e9371330219820f5816b18ffb8fa9fab2b27190304051b4e030","salt":"/TxtlwKIj6SAI+Zacj8YMg==","iter":310000,"sync":null};
 
-(function unlock() {
+/* One password for every game. It's typed once on the Games page; after that this device remembers it.
+   A game page opened on a device that doesn't know it is sent to the Games page to type it. */
+const Lock = (() => {
   "use strict";
-  const PW_KEY = "crowns:pw";
-  const $ = (id) => document.getElementById(id);
+  const KEYS = ["games:pw", "crowns:pw"];   // crowns:pw — devices that unlocked Crowns before Games existed
   const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-  const remembered = { get() { try { return localStorage.getItem(PW_KEY); } catch (e) { return null; } },
-                       set(v) { try { v ? localStorage.setItem(PW_KEY, v) : localStorage.removeItem(PW_KEY); } catch (e) {} } };
-
+  function get() {
+    for (const k of KEYS) { try { const v = localStorage.getItem(k); if (v) return v; } catch (e) {} }
+    return null;
+  }
+  function set(pw) { try { localStorage.setItem(KEYS[0], pw); } catch (e) {} }
+  function forget() { for (const k of KEYS) { try { localStorage.removeItem(k); } catch (e) {} } }
   async function check(pw) {
+    if (!pw || !window.crypto || !crypto.subtle) return false;
     const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
     return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("") === LOCK.hash;
   }
+  /* The sync key is sealed with the password so it can't be lifted from the page source. */
   async function syncKey(pw) {
     if (!LOCK.sync) return null;
     try {
@@ -294,33 +288,21 @@ const LOCK = {"hash":"0d444a2fab722e9371330219820f5816b18ffb8fa9fab2b27190304051
       return JSON.parse(new TextDecoder().decode(pt));
     } catch (e) { return null; }
   }
-
-  async function start(pw) {
-    $("gate").hidden = true;
-    $("game").hidden = false;
-    $("levelsBtn").hidden = false;
-    startGame(LEVELS, await syncKey(pw), () => { remembered.set(null); location.reload(); });
+  async function enter() {
+    const pw = get();
+    if (await check(pw)) return { pw, sync: await syncKey(pw) };
+    location.replace("games.html");
+    return new Promise(() => {});
   }
-
-  function showGate() {
-    $("gate").hidden = false;
-    const form = $("gateForm"), pw = $("pw"), msg = $("gateMsg");
-    pw.focus();
-    pw.addEventListener("input", () => { pw.classList.remove("wrong"); msg.textContent = ""; });
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      if (await check(pw.value)) { remembered.set(pw.value); start(pw.value); return; }
-      pw.classList.remove("wrong"); void pw.offsetWidth; pw.classList.add("wrong");
-      msg.textContent = "That's not the password";
-      pw.select();
-    });
-  }
-
-  if (!window.crypto || !crypto.subtle) { $("gate").hidden = false; $("gateMsg").textContent = "Open this page over https to play."; return; }
-  const saved = remembered.get();
-  if (saved) check(saved).then((ok) => { if (ok) start(saved); else { remembered.set(null); showGate(); } });
-  else showGate();
+  return { get, set, forget, check, syncKey, enter };
 })();
+
+
+Lock.enter().then(({ sync }) => {
+  document.getElementById("game").hidden = false;
+  document.getElementById("levelsBtn").hidden = false;
+  startGame(LEVELS, sync, () => { Lock.forget(); location.href = "games.html"; });
+});
 
 function startGame(LEVELS, SYNC, lock) {
   "use strict";
@@ -333,6 +315,10 @@ function startGame(LEVELS, SYNC, lock) {
   const $ = (id) => document.getElementById(id);
   const boardEl = $("board");
 
+  const SYNC_FILE = "progress.json";
+  /* Shared by every game: progress kept on this device, and synced through GitHub once there's a key.
+     Each game defines STORE (its localStorage key) and SYNC_FILE (its file in the repository) first, and
+     openLevel, startLevel, press, won, L, $, fmt for it to use. */
   /* What's kept, here and in the synced file:
        done[level]   = [best seconds, when it was solved]
        boards[level] = { m: marks, t: seconds, h: hints, at: when last changed }  (a level in progress)
@@ -378,7 +364,7 @@ function startGame(LEVELS, SYNC, lock) {
   /* ---- Sync: one JSON file in a private GitHub repository, read on unlock and whenever the page
      comes back into view, written a moment after each change. Without a key it all stays on this device. ---- */
   const sync = { on: !!(SYNC && SYNC.token), sha: null, timer: 0, busy: false, again: false, state: "off", touched: false };
-  const ghUrl = () => `https://api.github.com/repos/${SYNC.repo}/contents/${SYNC.path}`;
+  const ghUrl = () => `https://api.github.com/repos/${SYNC.repo}/contents/${SYNC_FILE}`;
   const ghHead = () => ({ Authorization: "Bearer " + SYNC.token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
   const enc64 = (str) => btoa(String.fromCharCode(...new TextEncoder().encode(str)));
   const dec64 = (b) => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g, "")), (c) => c.charCodeAt(0)));
@@ -462,6 +448,7 @@ function startGame(LEVELS, SYNC, lock) {
     else { sync.touched = false; syncNow(); }
   });
   setSync(sync.on ? "busy" : "off");
+
 
   /* ---- Level state ---- */
   let L, n, reg, sol, marks, cells, history, elapsed, running, won, hints, cursor = 0;
@@ -597,7 +584,7 @@ function startGame(LEVELS, SYNC, lock) {
     const i = +el.dataset.i;
     press = { id: e.pointerId, start: i, last: i, dragging: false, mode: marks[i] === X ? "wipe" : "paint", before: marks.join("") };
     cursor = i;
-    boardEl.setPointerCapture(e.pointerId);
+    try { boardEl.setPointerCapture(e.pointerId); } catch (err) {}
   });
   boardEl.addEventListener("pointermove", (e) => {
     if (!press || e.pointerId !== press.id) return;

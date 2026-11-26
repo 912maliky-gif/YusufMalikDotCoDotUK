@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#b8c5b0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141614" media="(prefers-color-scheme: dark)">
+<meta name="robots" content="noindex">
+<title>Yusuf's Plots</title>
+<script>
+  if (location.protocol === "http:" && location.hostname !== "localhost") location.replace("https:" + location.href.slice(5));
+</script>
+<style>
+  :root {
+    --bg: #b8c5b0; --panel: #ffffff; --ink: #17281a; --muted: #5b7360; --line: #c0d8c6;
+    --accent-soft: #e0f0e4; --wall: #17281a; --seam: rgba(23, 40, 26, .16); --bad: #c0392b;
+    --cell-filter: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141614; --panel: #1d201e; --ink: #e9ece8; --muted: #8b918c; --line: #2a2e2b;
+      --accent-soft: #222a23; --wall: #0b0c0b; --seam: rgba(0, 0, 0, .22); --bad: #ff6b5b;
+      --cell-filter: saturate(.85) brightness(.86);
+    }
+  }
+  @font-face { font-family: "EB Garamond"; src: url("malik.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); min-height: 100dvh;
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  button { font: inherit; color: inherit; touch-action: manipulation; }
+  [hidden] { display: none !important; }
+
+  /* ---- The site's bar, as on Bot and Notes ---- */
+  .top { display: flex; align-items: center; gap: 12px; padding: 10px clamp(12px, 1.4vw, 24px); min-height: 49px;
+         padding-top: max(10px, env(safe-area-inset-top));
+         border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 20; }
+  .brand { font-weight: 640; letter-spacing: -.01em; white-space: nowrap; color: var(--ink); text-decoration: none; }
+  .mark { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: grid; grid-template-columns: 1fr auto 1fr;
+          align-items: center; white-space: nowrap; font-family: "EB Garamond", Garamond, "Hoefler Text", serif; z-index: 2; }
+  .mside { display: flex; align-items: center; gap: 2px; }
+  .mside.l { justify-self: end; }
+  .mside.r { justify-self: start; }
+  .mword { font: inherit; background: none; border: none; display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px;
+           border-radius: 8px; color: var(--ink); cursor: pointer; }
+  .mword:hover { background: var(--accent-soft); }
+  .mname { font-size: 19px; letter-spacing: .044em; line-height: 1; display: inline-block; transform: scaleX(.8); margin: 0 -6px; }
+  .marticle, .mnoun { font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--muted);
+    display: inline-block; overflow: hidden; max-width: 64px; transition: max-width .3s cubic-bezier(.2,.7,.3,1), opacity .2s, margin .3s; }
+  .mark.open .marticle, .mark.open .mnoun { max-width: 0; opacity: 0; margin: 0 -3px; }
+  .mpage { font-size: 13px; letter-spacing: .044em; line-height: 1; color: var(--ink); text-decoration: none; border-radius: 7px;
+    display: inline-block; overflow: hidden; max-width: 0; padding: 5px 0; margin: 0; opacity: 0; pointer-events: none;
+    transform: scale(.9); transition: max-width .34s cubic-bezier(.2,.7,.3,1), padding .34s, margin .34s, opacity .24s, transform .34s cubic-bezier(.2,.7,.3,1); }
+  .mside.l .mpage { transform: translateX(14px) scale(.9); }
+  .mside.r .mpage { transform: translateX(-14px) scale(.9); }
+  .mark.open .mpage { max-width: 140px; padding: 5px 9px; margin: 0 2px; opacity: 1; pointer-events: auto; transform: none; }
+  .mside.l .mpage:last-child { margin-right: 6px; }
+  .mside.r .mpage:first-child { margin-left: 6px; }
+  .mpage:hover { background: var(--accent-soft); }
+  .mpage.here { background: var(--bg); color: var(--ink); cursor: default; }
+  .mpage.here:hover { background: var(--bg); }
+  .levels-btn { margin-left: auto; background: var(--accent-soft); border: 0; border-radius: 999px; padding: 6px 14px; font-size: 13px;
+                font-weight: 600; cursor: pointer; position: relative; z-index: 3; }
+  @media (max-width: 640px) { .mark { display: none; } }
+
+  /* ---- The game ---- */
+  main { display: grid; justify-items: center; gap: 14px; padding: 18px 16px max(28px, env(safe-area-inset-bottom)); }
+  .stage { width: var(--board); display: grid; gap: 12px; }
+  :root { --board: min(calc(100vw - 32px), 560px, max(300px, calc(100dvh - 270px))); }
+  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .title { font-family: "EB Garamond", Garamond, "Hoefler Text", serif; font-size: 30px; line-height: 1; letter-spacing: .01em; margin: 0; }
+  .size { color: var(--muted); font-size: 13px; margin-left: 8px; font-family: inherit; }
+  .clock { font-variant-numeric: tabular-nums; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .clock svg { width: 16px; height: 16px; opacity: .55; }
+  .diff { display: flex; gap: 3px; align-items: center; color: var(--muted); font-size: 12px; }
+  .diff i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+  .diff i.on { background: var(--ink); }
+  .sub { display: flex; justify-content: space-between; align-items: center; margin-top: -4px; }
+
+  .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .tool { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 4px 8px; cursor: pointer;
+          display: grid; justify-items: center; gap: 3px; font-size: 12px; font-weight: 600; }
+  .tool svg { width: 20px; height: 20px; }
+  .tool:hover { background: var(--accent-soft); }
+  .tool:disabled { opacity: .45; cursor: default; }
+  .tool[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .rules { color: var(--muted); font-size: 13px; margin: 2px 0 0; text-align: center; text-wrap: balance; }
+  .toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); translate: -50% 20px; opacity: 0;
+           background: var(--ink); color: var(--panel); padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+           transition: opacity .2s, translate .2s; pointer-events: none; z-index: 60; white-space: nowrap; }
+  .toast.show { opacity: 1; translate: -50% 0; }
+
+  /* ---- Win card and level picker ---- */
+  .scrim { position: fixed; inset: 0; background: rgba(15, 25, 17, .38); display: grid; place-items: center; padding: 16px; z-index: 50;
+           animation: fade .2s; }
+  @keyframes fade { from { opacity: 0; } }
+  .card { background: var(--panel); border-radius: 18px; padding: 24px 22px 20px; width: min(360px, 100%); text-align: center;
+          box-shadow: 0 30px 60px -30px rgba(0,0,0,.5); animation: rise .3s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes rise { from { transform: translateY(16px) scale(.97); opacity: 0; } }
+  .card h2 { font-family: "EB Garamond", Garamond, serif; font-weight: 400; font-size: 34px; margin: 4px 0 2px; }
+  .card .big { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 6px 0 2px; }
+  .card .meta { color: var(--muted); font-size: 13px; }
+  .card .crownmark { width: 46px; height: 46px; color: #c99a2e; }
+  .row { display: flex; gap: 8px; margin-top: 18px; }
+  .btn { flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 11px 10px; font-weight: 650; cursor: pointer; }
+  .btn.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+
+  .picker { background: var(--panel); border-radius: 18px; width: min(560px, 100%); max-height: min(86dvh, 760px); display: grid;
+            grid-template-rows: auto 1fr; overflow: hidden; animation: rise .3s cubic-bezier(.2,.9,.3,1.2); }
+  .picker header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; border-bottom: 1px solid var(--line); }
+  .picker h2 { font-family: "EB Garamond", Garamond, serif; font-weight: 400; font-size: 28px; margin: 0; }
+  .picker .count { color: var(--muted); font-size: 13px; }
+  .close { border: 0; background: var(--accent-soft); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; line-height: 1; }
+  .picker .scroll { overflow-y: auto; padding: 6px 18px 20px; overscroll-behavior: contain; }
+  .picker h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 8px; font-weight: 650; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 7px; }
+  .lv { aspect-ratio: 1; border-radius: 11px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; display: grid;
+        place-items: center; align-content: center; gap: 1px; font-weight: 650; font-variant-numeric: tabular-nums; padding: 0; }
+  .lv small { font-size: 10px; font-weight: 500; color: var(--muted); }
+  .lv.done { background: var(--sw); border-color: transparent; color: #17281a; filter: var(--cell-filter); }
+  .lv.done small { color: rgba(23,40,26,.7); }
+  .lv.now { outline: 2.5px solid var(--ink); outline-offset: 1px; }
+  .lv:hover { border-color: var(--ink); }
+  .picker .foot { display: flex; justify-content: center; margin-top: 22px; }
+  .linkbtn { border: 0; background: none; color: var(--muted); text-decoration: underline; font-size: 12px; cursor: pointer; }
+  .picker .foot { gap: 18px; }
+
+  /* ---- The lock ---- */
+  .gate { min-height: calc(100dvh - 140px); display: grid; place-items: center; padding: 24px 16px; }
+  .gatecard { background: var(--panel); border-radius: 18px; padding: 26px 22px 22px; width: min(360px, 100%); display: grid; gap: 12px;
+              text-align: center; box-shadow: 0 30px 60px -34px rgba(0,0,0,.45); }
+  .gatecard .crownmark { width: 40px; height: 40px; color: #c99a2e; justify-self: center; }
+  .gatecard h2 { font-family: "EB Garamond", Garamond, serif; font-weight: 400; font-size: 30px; margin: 0; }
+  .gatecard p { margin: -6px 0 4px; color: var(--muted); font-size: 13px; }
+  .gatecard input[type=password] { font: inherit; font-size: 16px; padding: 11px 13px; border-radius: 12px; border: 1px solid var(--line);
+                                   background: var(--bg); color: var(--ink); outline: none; width: 100%; }
+  .gatecard input[type=password]:focus { border-color: var(--ink); }
+  .gatecard input.wrong { border-color: var(--bad); animation: shake .3s; }
+  .gatecard .msg { min-height: 1.2em; font-size: 13px; color: var(--bad); margin: -4px 0 0; }
+  @keyframes shake { 25% { translate: -6px; } 75% { translate: 6px; } }
+  .vh { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; opacity: 0; }
+  .syncdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin: 0 5px 1px 0; vertical-align: middle; }
+  .syncdot.ok { background: #3c9a52; } .syncdot.busy { background: #c99a2e; } .syncdot.bad { background: var(--bad); }
+
+
+  /* ---- The board: a plain grid underneath, the drawn plots on top, the clues on top of those ---- */
+  :root { --ground: #f3f5f1; --gridline: rgba(23, 40, 26, .13); --clue-ink: #17281a; }
+  @media (prefers-color-scheme: dark) { :root { --ground: #262a27; --gridline: rgba(255, 255, 255, .08); } }
+  .pboard { --n: 6; width: var(--board); aspect-ratio: 1; position: relative; border-radius: 12px; overflow: hidden;
+            background-color: var(--ground);
+            background-image: linear-gradient(var(--gridline) 1px, transparent 1px), linear-gradient(90deg, var(--gridline) 1px, transparent 1px);
+            background-size: calc(100% / var(--n)) calc(100% / var(--n)); background-position: -0.5px -0.5px;
+            border: 3px solid var(--wall); box-shadow: 0 10px 30px -18px rgba(23, 40, 26, .55);
+            touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: crosshair; }
+  .plot { position: absolute; border-radius: 9px; background: var(--c); filter: var(--cell-filter);
+          box-shadow: inset 0 0 0 2px rgba(23, 40, 26, .28); transition: box-shadow .15s; animation: drop .18s ease-out;
+          left: calc(var(--x) * 100% / var(--n) + 3px); top: calc(var(--y) * 100% / var(--n) + 3px);
+          width: calc(var(--w) * 100% / var(--n) - 6px); height: calc(var(--h) * 100% / var(--n) - 6px); }
+  .plot.empty { background: color-mix(in srgb, var(--muted) 30%, var(--ground)); }
+  .plot.bad { background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--bad) 30%, transparent) 6px 10px);
+              box-shadow: inset 0 0 0 2.5px var(--bad); }
+  .plot.flash { animation: glow .9s ease 2; }
+  .plot.preview { background: color-mix(in srgb, var(--ink) 12%, transparent); box-shadow: inset 0 0 0 2.5px var(--ink);
+                  animation: none; filter: none; z-index: 3; display: grid; place-items: center; }
+  .plot.preview span { background: var(--ink); color: var(--panel); border-radius: 999px; padding: 2px 9px; font-size: 13px; font-weight: 700;
+                       font-variant-numeric: tabular-nums; white-space: nowrap; }
+  @keyframes drop { from { transform: scale(.94); opacity: .5; } }
+  @keyframes glow { 50% { box-shadow: inset 0 0 0 4px var(--ink); } }
+  .pboard.won .plot { animation: settle .6s cubic-bezier(.3,1.6,.5,1) both; animation-delay: calc(var(--k) * 40ms); }
+  @keyframes settle { 40% { transform: scale(1.04); } }
+
+  .clue { position: absolute; z-index: 2; pointer-events: none; display: grid; place-items: center;
+          left: calc(var(--x) * 100% / var(--n)); top: calc(var(--y) * 100% / var(--n));
+          width: calc(100% / var(--n)); height: calc(100% / var(--n)); }
+  .clue b { position: relative; display: grid; place-items: center; width: 70%; height: 70%; border-radius: 30%;
+            background: var(--c); filter: var(--cell-filter); color: var(--clue-ink); box-shadow: 0 0 0 2px rgba(23, 40, 26, .35);
+            font-weight: 750; font-size: calc(var(--board) / var(--n) * .34); font-variant-numeric: tabular-nums; line-height: 1; }
+  .clue i { position: absolute; right: 9%; top: 9%; border: 1.6px solid rgba(23, 40, 26, .75); border-radius: 1.5px; }
+  .clue i.s { width: 22%; height: 22%; }
+  .clue i.w { width: 28%; height: 15%; }
+  .clue i.t { width: 15%; height: 28%; }
+  .clue.inside b { box-shadow: 0 0 0 2px rgba(23, 40, 26, .55); }
+
+  .key { display: flex; justify-content: center; gap: 16px; color: var(--muted); font-size: 12px; margin-top: -2px; flex-wrap: wrap; }
+  .key span { display: inline-flex; align-items: center; gap: 6px; }
+  .key i { display: inline-block; border: 1.6px solid currentColor; border-radius: 1.5px; }
+  .key i.s { width: 10px; height: 10px; } .key i.w { width: 14px; height: 8px; } .key i.t { width: 8px; height: 14px; }
+  .tools { grid-template-columns: repeat(3, 1fr); }
+  .card .plotmark { width: 46px; height: 46px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="brand" href="games.html">&lsaquo; Games</a>
+  <nav class="mark" aria-label="MALIK">
+    <span class="mside l">
+      <a class="mpage" href="bot.html">Bot</a>
+      <a class="mpage" href="notes.html">Notes</a>
+    </span>
+    <button class="mword" type="button" aria-expanded="false">
+      <span class="marticle">a</span><span class="mname">MALIK</span><span class="mnoun">product</span>
+    </button>
+    <span class="mside r">
+      <a class="mpage" href="index.html#preview">Yusuf&rsquo;s Preview</a>
+      <a class="mpage" href="games.html">Games</a>
+    </span>
+  </nav>
+  <button class="levels-btn" id="levelsBtn" type="button" hidden>Levels</button>
+</div>
+<script>
+  /* The same menu as the other pages: press the mark and the pages come out either side of it. */
+  (function () {
+    const mk = document.querySelector(".mark"), btn = mk.querySelector(".mword");
+    let away = null;
+    const set = open => { mk.classList.toggle("open", open); btn.setAttribute("aria-expanded", open ? "true" : "false"); };
+    btn.addEventListener("click", () => set(!mk.classList.contains("open")));
+    document.addEventListener("pointermove", e => {
+      if (!mk.classList.contains("open")) return;
+      const r = mk.getBoundingClientRect(), pad = 28;
+      const inside = e.clientX >= r.left - pad && e.clientX <= r.right + pad && e.clientY >= r.top - pad && e.clientY <= r.bottom + pad;
+      if (inside) { clearTimeout(away); away = null; return; }
+      if (away === null) away = setTimeout(() => { away = null; set(false); }, 420);
+    });
+    document.addEventListener("click", e => { if (mk.classList.contains("open") && !e.target.closest(".mark")) set(false); }, true);
+  })();
+</script>
+
+
+<main id="game" hidden>
+  <div class="stage">
+    <div class="head">
+      <h1 class="title"><span id="lvTitle">Level 1</span><span class="size" id="lvSize">5 × 5</span></h1>
+      <div class="clock" aria-label="Time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span id="clock">0:00</span></div>
+    </div>
+    <div class="sub">
+      <div class="diff" id="diff" aria-label="Difficulty"></div>
+      <div class="diff" id="best"></div>
+    </div>
+    <div class="pboard" id="board" aria-label="Puzzle board"></div>
+    <div class="tools">
+      <button class="tool" id="undo" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button>
+      <button class="tool" id="clear" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>Clear</button>
+      <button class="tool" id="hint" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V16h8v-1.3A7 7 0 0 0 12 2z"/></svg>Hint</button>
+    </div>
+    <div class="key"><span><i class="s"></i>square</span><span><i class="w"></i>wider than tall</span><span><i class="t"></i>taller than wide</span></div>
+    <p class="rules">Split the grid into rectangles, each holding exactly one number &mdash; that&rsquo;s how many squares it covers, in the shape shown.<br>Drag to draw a rectangle. Tap one to remove it.</p>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div class="scrim" id="winScrim" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+    <svg class="plotmark" viewBox="0 0 24 24"><use href="#plotmark"/></svg>
+    <h2 id="winTitle">Solved</h2>
+    <div class="big" id="winTime">0:00</div>
+    <div class="meta" id="winMeta"></div>
+    <div class="row">
+      <button class="btn" id="replay" type="button">Replay</button>
+      <button class="btn primary" id="next" type="button">Next level</button>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="pickScrim" hidden>
+  <div class="picker" role="dialog" aria-modal="true" aria-labelledby="pickTitle">
+    <header><div><h2 id="pickTitle">Levels</h2><div class="count" id="pickCount"></div></div><button class="close" id="pickClose" type="button" aria-label="Close">×</button></header>
+    <div class="scroll" id="pickList"></div>
+  </div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="plotmark" viewBox="0 0 24 24">
+    <rect x="2" y="2" width="11" height="8" rx="2" fill="#f4b6a6"/><rect x="15" y="2" width="7" height="13" rx="2" fill="#9fcde8"/>
+    <rect x="2" y="12" width="5" height="10" rx="2" fill="#f7d98b"/><rect x="9" y="12" width="4" height="10" rx="2" fill="#bfe0a6"/>
+    <rect x="15" y="17" width="7" height="5" rx="2" fill="#cdb8ea"/>
+  </symbol>
+</svg>
+
+<script>
+/* [size, clues [[row, col, area, shape s|w|t|a]], answer [[top, left, height, width]] (same order), colours, difficulty] */
+const LEVELS = [[5,[[0,0,3,"a"],[0,2,3,"w"],[3,4,5,"a"],[2,2,6,"t"],[2,3,2,"a"],[4,0,2,"a"],[3,3,2,"a"],[4,1,2,"a"]],[[0,0,3,1],[0,1,1,3],[0,4,5,1],[1,1,3,2],[1,3,2,1],[3,0,2,1],[3,3,2,1],[4,1,1,2]],[0,8,5,6,0,4,1,0],6],[5,[[0,2,5,"w"],[1,3,5,"w"],[2,2,4,"a"],[3,4,2,"t"],[3,2,4,"a"],[4,0,2,"w"],[4,4,3,"a"]],[[0,0,1,5],[1,0,1,5],[2,0,1,4],[2,4,2,1],[3,0,1,4],[4,0,1,2],[4,2,1,3]],[0,8,5,6,4,9,0],6],[5,[[0,1,5,"a"],[1,1,6,"w"],[3,3,6,"a"],[3,1,2,"a"],[4,2,2,"a"],[4,1,2,"w"],[4,4,2,"w"]],[[0,0,1,5],[1,0,2,3],[1,3,3,2],[3,0,1,2],[3,2,2,1],[4,0,1,2],[4,3,1,2]],[0,8,7,3,0,5,3],7],[5,[[2,1,6,"t"],[0,2,2,"t"],[0,4,2,"w"],[2,3,4,"a"],[2,2,3,"a"],[3,0,4,"a"],[3,4,4,"s"]],[[0,0,3,2],[0,2,2,1],[0,3,1,2],[1,3,2,2],[2,2,3,1],[3,0,2,2],[3,3,2,2]],[0,8,5,6,1,5,3],7],[5,[[0,0,2,"w"],[2,2,3,"t"],[0,3,3,"t"],[2,4,5,"t"],[1,1,2,"a"],[3,0,6,"a"],[3,3,2,"a"],[4,2,2,"w"]],[[0,0,1,2],[0,2,3,1],[0,3,3,1],[0,4,5,1],[1,0,1,2],[2,0,3,2],[3,2,1,2],[4,2,1,2]],[0,8,5,3,5,3,0,2],8],[5,[[0,0,2,"a"],[0,1,6,"a"],[0,3,3,"a"],[1,4,3,"t"],[3,0,3,"t"],[3,1,4,"a"],[3,3,4,"s"]],[[0,0,2,1],[0,1,3,2],[0,3,3,1],[0,4,3,1],[2,0,3,1],[3,1,2,2],[3,3,2,2]],[0,8,5,3,5,3,2],9],[5,[[0,1,4,"a"],[2,2,6,"t"],[4,4,5,"a"],[4,1,6,"a"],[3,3,2,"a"],[4,3,2,"w"]],[[0,0,2,2],[0,2,3,2],[0,4,5,1],[2,0,3,2],[3,2,1,2],[4,2,1,2]],[0,8,5,6,0,1],9],[5,[[0,0,2,"a"],[1,2,6,"a"],[1,4,5,"a"],[1,0,4,"s"],[3,0,6,"a"],[3,3,2,"a"]],[[0,0,1,2],[0,2,3,2],[0,4,5,1],[1,0,2,2],[3,0,2,3],[3,3,2,1]],[0,8,5,6,4,0],10],[5,[[0,1,4,"a"],[1,2,6,"w"],[3,0,6,"t"],[2,2,2,"w"],[4,4,3,"a"],[4,2,4,"s"]],[[0,0,2,2],[0,2,2,3],[2,0,3,2],[2,2,1,2],[2,4,3,1],[3,2,2,2]],[0,8,6,5,4,0],18],[5,[[0,3,5,"a"],[1,0,6,"a"],[1,4,6,"a"],[3,2,6,"w"],[4,0,2,"a"]],[[0,0,1,5],[1,0,3,2],[1,2,2,3],[3,2,2,3],[4,0,1,2]],[0,8,7,5,4],42],[6,[[0,4,5,"a"],[0,5,2,"a"],[1,0,8,"t"],[1,2,5,"a"],[5,3,5,"t"],[3,4,3,"a"],[3,5,2,"a"],[4,5,2,"w"],[5,0,2,"w"],[5,5,2,"w"]],[[0,0,1,5],[0,5,2,1],[1,0,4,2],[1,2,5,1],[1,3,5,1],[1,4,3,1],[2,5,2,1],[4,4,1,2],[5,0,1,2],[5,4,1,2]],[0,8,6,7,5,1,3,0,0,9],6],[6,[[1,1,4,"a"],[0,2,4,"s"],[1,5,4,"s"],[2,0,8,"a"],[5,4,8,"a"],[4,1,3,"a"],[5,3,2,"a"],[5,2,3,"w"]],[[0,0,2,2],[0,2,2,2],[0,4,2,2],[2,0,2,4],[2,4,4,2],[4,0,1,3],[4,3,2,1],[5,0,1,3]],[0,8,5,6,4,9,0,2],8],[6,[[4,0,6,"t"],[0,1,4,"w"],[4,5,6,"a"],[2,2,4,"s"],[4,4,8,"a"],[5,1,6,"t"],[5,4,2,"w"]],[[0,0,6,1],[0,1,1,4],[0,5,6,1],[1,1,2,2],[1,3,4,2],[3,1,3,2],[5,3,1,2]],[0,8,5,6,0,4,1],8],[6,[[0,0,2,"a"],[1,2,8,"w"],[1,1,8,"a"],[5,2,4,"t"],[3,3,6,"w"],[4,4,4,"s"],[5,5,2,"t"],[5,0,2,"a"]],[[0,0,1,2],[0,2,2,4],[1,0,4,2],[2,2,4,1],[2,3,2,3],[4,3,2,2],[4,5,2,1],[5,0,1,2]],[0,8,7,5,4,3,2,1],8],[6,[[1,0,6,"a"],[1,1,6,"t"],[1,3,4,"s"],[3,4,5,"t"],[0,5,6,"t"],[4,3,6,"t"],[5,4,3,"a"]],[[0,0,6,1],[0,1,6,1],[0,2,2,2],[0,4,5,1],[0,5,6,1],[2,2,3,2],[5,2,1,3]],[0,8,5,3,1,0,2],9],[6,[[1,0,6,"a"],[0,3,3,"t"],[0,5,8,"t"],[3,1,6,"t"],[3,2,2,"a"],[3,3,3,"a"],[5,2,2,"a"],[4,5,4,"s"],[5,0,2,"w"]],[[0,0,2,3],[0,3,3,1],[0,4,4,2],[2,0,3,2],[2,2,2,1],[3,3,3,1],[4,2,2,1],[4,4,2,2],[5,0,1,2]],[0,8,5,4,1,0,2,2,0],9],[6,[[0,4,5,"w"],[3,5,4,"t"],[5,0,5,"a"],[1,1,4,"s"],[1,3,2,"t"],[2,4,2,"a"],[4,2,4,"s"],[3,4,4,"s"],[5,5,2,"a"],[5,3,4,"a"]],[[0,0,1,5],[0,5,4,1],[1,0,5,1],[1,1,2,2],[1,3,2,1],[1,4,2,1],[3,1,2,2],[3,3,2,2],[4,5,2,1],[5,1,1,4]],[0,8,6,7,5,1,2,3,0,7],9],[6,[[0,0,8,"t"],[0,3,4,"w"],[2,2,5,"t"],[4,3,8,"a"],[3,5,4,"t"],[5,0,4,"s"],[5,4,3,"a"]],[[0,0,4,2],[0,2,1,4],[1,2,5,1],[1,3,4,2],[1,5,4,1],[4,0,2,2],[5,3,1,3]],[0,8,7,5,4,4,0],9],[6,[[0,0,2,"a"],[5,1,6,"a"],[0,3,2,"w"],[1,5,6,"a"],[1,3,4,"a"],[4,0,4,"a"],[3,3,2,"a"],[3,4,2,"a"],[4,5,4,"a"],[5,5,4,"a"]],[[0,0,2,1],[0,1,6,1],[0,2,1,2],[0,4,3,2],[1,2,2,2],[2,0,4,1],[3,2,1,2],[3,4,1,2],[4,2,1,4],[5,2,1,4]],[0,8,5,3,0,4,3,5,0,9],10],[6,[[1,0,8,"w"],[1,4,3,"t"],[1,5,3,"t"],[5,1,8,"t"],[3,2,4,"a"],[5,4,6,"a"],[5,2,4,"s"]],[[0,0,2,4],[0,4,3,1],[0,5,3,1],[2,0,4,2],[2,2,2,2],[3,4,3,2],[4,2,2,2]],[0,8,5,4,1,0,2],11],[6,[[0,1,6,"t"],[1,2,5,"a"],[2,3,5,"t"],[2,4,6,"t"],[3,1,6,"a"],[4,4,4,"a"],[5,2,2,"w"],[5,4,2,"w"]],[[0,0,3,2],[0,2,5,1],[0,3,5,1],[0,4,3,2],[3,0,3,2],[3,4,2,2],[5,2,1,2],[5,4,1,2]],[0,8,5,3,5,4,2,1],12],[6,[[1,0,4,"s"],[1,2,4,"t"],[0,3,4,"a"],[0,4,8,"t"],[3,0,2,"a"],[4,1,4,"a"],[4,0,2,"a"],[4,4,8,"w"]],[[0,0,2,2],[0,2,4,1],[0,3,4,1],[0,4,4,2],[2,0,2,1],[2,1,4,1],[4,0,2,1],[4,2,2,4]],[0,8,5,3,2,1,4,2],18],[6,[[0,1,6,"t"],[0,4,3,"w"],[1,5,4,"t"],[2,2,8,"a"],[3,4,4,"t"],[4,1,4,"s"],[5,5,2,"a"],[5,1,2,"a"],[5,2,3,"a"]],[[0,0,3,2],[0,2,1,3],[0,5,4,1],[1,2,4,2],[1,4,4,1],[3,0,2,2],[4,5,2,1],[5,0,1,2],[5,2,1,3]],[0,8,5,6,0,4,3,5,4],18],[6,[[2,1,6,"a"],[0,2,4,"a"],[0,4,6,"a"],[2,3,2,"w"],[3,1,6,"t"],[3,2,8,"w"],[5,5,4,"a"]],[[0,0,3,2],[0,2,2,2],[0,4,3,2],[2,2,1,2],[3,0,3,2],[3,2,2,4],[5,2,1,4]],[0,8,5,1,2,0,4],19],[6,[[0,0,6,"a"],[0,3,8,"w"],[2,3,4,"a"],[2,4,2,"a"],[5,0,6,"t"],[3,5,2,"w"],[4,2,8,"w"]],[[0,0,3,2],[0,2,2,4],[2,2,2,2],[2,4,1,2],[3,0,3,2],[3,4,1,2],[4,2,2,4]],[0,8,7,5,5,3,0],20],[6,[[3,1,8,"a"],[0,3,6,"t"],[1,4,4,"t"],[1,5,6,"t"],[5,3,6,"a"],[4,0,4,"a"],[4,4,2,"a"]],[[0,0,4,2],[0,2,3,2],[0,4,4,1],[0,5,6,1],[3,2,3,2],[4,0,2,2],[4,4,2,1]],[0,8,5,3,1,5,0],21],[6,[[0,1,6,"t"],[0,3,4,"s"],[2,4,5,"a"],[4,5,5,"a"],[5,2,8,"a"],[3,1,6,"t"],[5,5,2,"a"]],[[0,0,3,2],[0,2,2,2],[0,4,5,1],[0,5,5,1],[2,2,4,2],[3,0,3,2],[5,4,1,2]],[0,8,5,3,1,5,0],21],[6,[[2,1,6,"a"],[1,2,6,"t"],[0,4,8,"a"],[3,1,6,"a"],[4,2,4,"s"],[5,4,4,"s"],[5,3,2,"a"]],[[0,0,3,2],[0,2,3,2],[0,4,4,2],[3,0,3,2],[3,2,2,2],[4,4,2,2],[5,2,1,2]],[0,8,5,4,0,4,3],27],[6,[[0,1,6,"a"],[3,2,8,"a"],[2,4,3,"a"],[1,5,4,"a"],[3,0,4,"s"],[3,4,3,"a"],[5,3,4,"s"],[5,5,2,"a"],[5,0,2,"w"]],[[0,0,3,2],[0,2,4,2],[0,4,3,1],[0,5,4,1],[3,0,2,2],[3,4,3,1],[4,2,2,2],[4,5,2,1],[5,0,1,2]],[0,8,5,3,5,0,1,2,0],32],[6,[[0,2,3,"a"],[0,4,6,"a"],[2,0,6,"w"],[3,5,6,"a"],[4,0,3,"a"],[4,2,6,"a"],[5,5,6,"w"]],[[0,0,1,3],[0,3,2,3],[1,0,2,3],[2,3,2,3],[3,0,3,1],[3,1,3,2],[4,3,2,3]],[0,8,7,5,1,0,3],45],[7,[[0,3,7,"w"],[1,5,6,"w"],[2,6,3,"a"],[4,0,3,"t"],[2,3,3,"w"],[2,5,4,"s"],[5,1,9,"a"],[6,4,9,"s"],[5,0,2,"a"],[6,3,3,"w"]],[[0,0,1,7],[1,0,1,6],[1,6,3,1],[2,0,3,1],[2,1,1,3],[2,4,2,2],[3,1,3,3],[4,4,3,3],[5,0,2,1],[6,1,1,3]],[0,8,7,3,5,0,1,2,0,3],6],[7,[[0,5,7,"w"],[1,0,5,"a"],[4,5,8,"t"],[2,0,5,"a"],[4,2,9,"a"],[3,4,2,"a"],[5,4,3,"t"],[6,3,6,"w"],[5,5,4,"s"]],[[0,0,1,7],[1,0,1,5],[1,5,4,2],[2,0,5,1],[2,1,3,3],[2,4,2,1],[4,4,3,1],[5,1,2,3],[5,5,2,2]],[0,8,7,3,5,0,1,0,0],8],[7,[[2,0,5,"a"],[6,1,7,"a"],[2,2,8,"t"],[1,4,3,"t"],[0,5,3,"a"],[2,6,5,"t"],[5,4,3,"t"],[3,5,3,"a"],[5,2,2,"a"],[4,3,2,"t"],[5,0,2,"a"],[5,6,2,"t"],[6,2,4,"w"]],[[0,0,5,1],[0,1,7,1],[0,2,4,2],[0,4,3,1],[0,5,3,1],[0,6,5,1],[3,4,3,1],[3,5,3,1],[4,2,2,1],[4,3,2,1],[5,0,2,1],[5,6,2,1],[6,2,1,4]],[0,8,5,3,1,9,2,0,0,1,7,6,9],9],[7,[[0,1,2,"a"],[0,2,5,"a"],[3,0,4,"t"],[1,5,5,"w"],[1,6,6,"t"],[2,5,5,"w"],[3,1,3,"a"],[6,4,8,"a"],[6,1,9,"a"],[5,0,2,"a"]],[[0,0,1,2],[0,2,1,5],[1,0,4,1],[1,1,1,5],[1,6,6,1],[2,1,1,5],[3,1,1,3],[3,4,4,2],[4,1,3,3],[5,0,2,1]],[0,8,6,1,5,0,3,1,0,9],9],[7,[[0,5,7,"w"],[2,0,6,"a"],[2,2,8,"a"],[1,5,5,"a"],[2,6,2,"a"],[4,2,4,"a"],[3,3,2,"a"],[6,4,4,"t"],[5,6,3,"a"],[5,2,4,"s"],[5,3,2,"a"],[6,6,2,"a"]],[[0,0,1,7],[1,0,6,1],[1,1,2,4],[1,5,5,1],[1,6,2,1],[3,1,2,2],[3,3,2,1],[3,4,4,1],[3,6,3,1],[5,1,2,2],[5,3,2,1],[6,5,1,2]],[0,8,7,6,5,3,2,0,0,9,1,7],10],[7,[[0,0,2,"a"],[1,3,4,"a"],[1,6,6,"w"],[2,1,4,"a"],[2,2,8,"w"],[2,6,5,"a"],[5,1,6,"t"],[5,2,8,"a"],[6,0,6,"a"]],[[0,0,1,2],[0,2,2,2],[0,4,2,3],[1,0,2,2],[2,2,2,4],[2,6,5,1],[3,0,3,2],[4,2,2,4],[6,0,1,6]],[0,8,5,6,0,4,3,1,0],10],[7,[[1,3,8,"w"],[3,4,4,"t"],[1,5,3,"t"],[3,6,7,"a"],[4,0,8,"a"],[2,3,4,"a"],[3,5,4,"t"],[6,3,9,"s"],[6,0,2,"w"]],[[0,0,2,4],[0,4,4,1],[0,5,3,1],[0,6,7,1],[2,0,4,2],[2,2,2,2],[3,5,4,1],[4,2,3,3],[6,0,1,2]],[0,8,5,3,2,1,0,4,0],11],[7,[[1,0,7,"t"],[0,1,5,"w"],[0,6,2,"a"],[1,1,5,"w"],[4,2,6,"a"],[2,3,9,"s"],[2,6,2,"a"],[5,6,3,"a"],[5,2,8,"a"],[5,5,2,"a"]],[[0,0,7,1],[0,1,1,5],[0,6,2,1],[1,1,1,5],[2,1,3,2],[2,3,3,3],[2,6,2,1],[4,6,3,1],[5,1,2,4],[5,5,2,1]],[0,8,5,1,6,4,2,1,1,9],11],[7,[[0,0,9,"a"],[0,3,7,"a"],[0,6,3,"w"],[2,4,6,"w"],[3,0,8,"a"],[6,2,4,"a"],[4,6,9,"s"],[6,4,3,"a"]],[[0,0,3,3],[0,3,7,1],[0,4,1,3],[1,4,2,3],[3,0,4,2],[3,2,4,1],[3,4,3,3],[6,4,1,3]],[0,8,5,6,2,1,2,1],12],[7,[[6,0,7,"a"],[2,1,6,"a"],[0,2,8,"w"],[4,6,7,"a"],[3,3,6,"w"],[3,5,5,"a"],[4,2,2,"a"],[4,3,3,"a"],[5,4,3,"a"],[6,1,2,"w"]],[[0,0,7,1],[0,1,6,1],[0,2,2,4],[0,6,7,1],[2,2,2,3],[2,5,5,1],[4,2,2,1],[4,3,3,1],[4,4,3,1],[6,1,1,2]],[0,8,5,3,4,0,2,1,2,6],12],[7,[[1,1,6,"a"],[1,5,8,"a"],[2,6,7,"t"],[3,2,6,"a"],[3,5,6,"t"],[4,0,2,"a"],[4,1,2,"a"],[5,1,8,"w"],[5,5,2,"a"],[6,5,2,"a"]],[[0,0,3,2],[0,2,2,4],[0,6,7,1],[2,2,3,2],[2,4,3,2],[3,0,2,1],[3,1,2,1],[5,0,2,4],[5,4,1,2],[6,4,1,2]],[0,8,5,6,0,9,1,0,1,2],13],[7,[[1,0,8,"a"],[2,2,9,"s"],[1,5,2,"t"],[2,6,6,"a"],[3,5,4,"t"],[4,4,9,"a"],[4,0,2,"w"],[6,0,2,"a"],[6,1,2,"a"],[6,4,5,"w"]],[[0,0,4,2],[0,2,3,3],[0,5,2,1],[0,6,6,1],[2,5,4,1],[3,2,3,3],[4,0,1,2],[5,0,2,1],[5,1,2,1],[6,2,1,5]],[0,8,5,3,0,4,3,5,0,1],18],[7,[[1,0,9,"s"],[0,6,8,"a"],[4,4,6,"a"],[3,5,4,"a"],[3,1,3,"a"],[4,1,3,"a"],[5,5,6,"a"],[6,0,2,"t"],[5,1,2,"a"],[6,3,4,"s"],[6,2,2,"w"]],[[0,0,3,3],[0,3,2,4],[2,3,3,2],[2,5,2,2],[3,0,1,3],[4,0,1,3],[4,5,3,2],[5,0,2,1],[5,1,1,2],[5,3,2,2],[6,1,1,2]],[0,8,7,5,5,3,2,5,0,1,2],20],[7,[[1,0,5,"t"],[4,1,5,"a"],[0,2,8,"a"],[2,5,6,"a"],[1,6,7,"a"],[3,5,6,"t"],[4,2,2,"a"],[6,0,8,"a"],[6,5,2,"w"]],[[0,0,5,1],[0,1,5,1],[0,2,4,2],[0,4,3,2],[0,6,7,1],[3,4,3,2],[4,2,1,2],[5,0,2,4],[6,4,1,2]],[0,8,5,3,1,0,1,2,3],20],[7,[[1,1,6,"t"],[0,4,9,"a"],[0,5,7,"t"],[1,6,4,"t"],[6,1,8,"a"],[4,2,2,"a"],[3,3,6,"t"],[5,6,3,"a"],[6,2,2,"t"],[6,4,2,"a"]],[[0,0,3,2],[0,2,3,3],[0,5,7,1],[0,6,4,1],[3,0,4,2],[3,2,2,1],[3,3,3,2],[4,6,3,1],[5,2,2,1],[6,3,1,2]],[0,8,5,3,2,4,0,1,1,2],21],[7,[[0,0,4,"a"],[0,4,5,"a"],[2,6,4,"a"],[3,2,8,"a"],[1,3,3,"t"],[2,5,6,"a"],[5,0,3,"t"],[4,5,8,"a"],[6,2,4,"s"],[6,5,4,"w"]],[[0,0,4,1],[0,1,1,5],[0,6,4,1],[1,1,4,2],[1,3,3,1],[1,4,3,2],[4,0,3,1],[4,3,2,4],[5,1,2,2],[6,3,1,4]],[0,8,5,6,4,0,3,2,0,9],22],[7,[[0,5,7,"a"],[2,1,8,"a"],[2,4,3,"a"],[3,6,6,"t"],[4,0,4,"s"],[5,2,4,"t"],[3,3,4,"a"],[4,5,6,"a"],[6,6,3,"t"],[5,0,2,"a"],[6,0,2,"a"]],[[0,0,1,7],[1,0,2,4],[1,4,3,1],[1,5,3,2],[3,0,2,2],[3,2,4,1],[3,3,4,1],[4,4,3,2],[4,6,3,1],[5,0,1,2],[6,0,1,2]],[0,8,7,6,1,4,0,1,0,9,7],23],[7,[[1,0,2,"t"],[1,2,8,"a"],[1,4,6,"a"],[1,5,4,"a"],[2,0,5,"a"],[2,5,5,"a"],[3,6,5,"a"],[3,3,4,"a"],[3,4,4,"a"],[5,2,6,"a"]],[[0,0,2,1],[0,1,4,2],[0,3,3,2],[0,5,2,2],[2,0,5,1],[2,5,5,1],[2,6,5,1],[3,3,4,1],[3,4,4,1],[4,1,3,2]],[0,8,5,3,5,4,2,1,0,0],24],[7,[[0,1,8,"a"],[5,4,7,"a"],[4,5,7,"a"],[2,6,3,"a"],[3,1,4,"s"],[4,3,8,"t"],[5,6,4,"t"],[4,1,4,"s"],[6,1,4,"a"]],[[0,0,2,4],[0,4,7,1],[0,5,7,1],[0,6,3,1],[2,0,2,2],[2,2,4,2],[3,6,4,1],[4,0,2,2],[6,0,1,4]],[0,8,5,3,2,1,2,3,0],29],[7,[[1,0,6,"a"],[2,1,4,"t"],[2,3,9,"s"],[1,6,8,"a"],[5,4,9,"a"],[4,1,2,"t"],[4,5,2,"t"],[5,6,3,"a"],[6,3,6,"a"]],[[0,0,6,1],[0,1,4,1],[0,2,3,3],[0,5,4,2],[3,2,3,3],[4,1,2,1],[4,5,2,1],[4,6,3,1],[6,0,1,6]],[0,8,5,3,0,4,4,1,2],30],[7,[[2,1,6,"a"],[1,2,6,"a"],[0,6,2,"w"],[1,6,8,"t"],[3,2,4,"a"],[2,4,2,"a"],[4,0,4,"a"],[5,3,6,"a"],[5,4,3,"a"],[5,1,4,"s"],[5,5,2,"w"],[6,6,2,"a"]],[[0,0,3,2],[0,2,2,3],[0,5,1,2],[1,5,4,2],[2,2,2,2],[2,4,2,1],[3,0,2,2],[4,2,3,2],[4,4,3,1],[5,0,2,2],[5,5,1,2],[6,5,1,2]],[0,8,5,6,5,0,3,1,2,9,8,6],32],[7,[[0,1,5,"a"],[0,5,2,"w"],[1,2,4,"a"],[1,4,2,"a"],[3,5,4,"a"],[5,6,6,"a"],[2,1,6,"a"],[4,3,5,"t"],[3,4,4,"t"],[4,0,2,"a"],[6,2,3,"a"],[6,1,4,"a"],[5,5,2,"a"]],[[0,0,1,5],[0,5,1,2],[1,0,1,4],[1,4,2,1],[1,5,4,1],[1,6,6,1],[2,0,2,3],[2,3,5,1],[3,4,4,1],[4,0,1,2],[4,2,3,1],[5,0,2,2],[5,5,2,1]],[0,8,6,7,4,3,7,1,0,0,2,7,1],32],[7,[[0,2,4,"w"],[3,4,5,"t"],[2,5,3,"a"],[5,6,6,"t"],[2,1,8,"w"],[5,1,6,"t"],[4,3,8,"t"],[4,5,3,"a"],[6,4,2,"a"],[6,1,2,"a"],[6,6,2,"w"]],[[0,0,1,4],[0,4,5,1],[0,5,3,1],[0,6,6,1],[1,0,2,4],[3,0,3,2],[3,2,4,2],[3,5,3,1],[5,4,2,1],[6,0,1,2],[6,5,1,2]],[0,8,5,3,5,9,0,0,1,8,2],40],[7,[[1,0,5,"a"],[2,1,9,"s"],[1,4,4,"s"],[1,6,5,"t"],[3,5,4,"a"],[5,2,6,"a"],[4,3,4,"a"],[5,4,6,"a"],[5,0,2,"a"],[5,6,2,"t"],[6,1,2,"a"]],[[0,0,5,1],[0,1,3,3],[0,4,2,2],[0,6,5,1],[2,4,2,2],[3,1,3,2],[3,3,4,1],[4,4,3,2],[5,0,2,1],[5,6,2,1],[6,1,1,2]],[0,8,5,3,0,4,1,2,1,9,8],45],[7,[[0,2,3,"a"],[0,5,8,"a"],[5,0,5,"t"],[1,1,3,"a"],[2,2,2,"a"],[2,4,3,"a"],[3,6,4,"a"],[3,2,3,"w"],[5,5,3,"a"],[5,2,4,"s"],[4,3,3,"a"],[5,4,2,"t"],[6,2,3,"a"],[6,6,3,"a"]],[[0,0,1,3],[0,3,2,4],[1,0,5,1],[1,1,3,1],[1,2,2,1],[2,3,1,3],[2,6,4,1],[3,2,1,3],[3,5,3,1],[4,1,2,2],[4,3,3,1],[4,4,2,1],[6,0,1,3],[6,4,1,3]],[0,8,6,7,1,4,2,0,1,1,8,2,0,0],92],[8,[[0,3,8,"w"],[0,6,8,"w"],[4,0,8,"t"],[3,4,9,"s"],[3,5,2,"a"],[3,6,10,"t"],[4,5,2,"t"],[5,3,9,"s"],[6,1,2,"w"],[7,5,2,"t"],[7,1,2,"a"],[7,7,2,"a"]],[[0,0,2,4],[0,4,2,4],[2,0,4,2],[2,2,3,3],[2,5,2,1],[2,6,5,2],[4,5,2,1],[5,2,3,3],[6,0,1,2],[6,5,2,1],[7,0,1,2],[7,6,1,2]],[0,8,6,1,5,3,0,2,0,1,8,7],8],[8,[[3,1,8,"t"],[1,4,6,"a"],[1,5,4,"a"],[2,6,6,"a"],[2,3,10,"a"],[2,4,3,"t"],[4,6,5,"a"],[7,7,5,"a"],[4,1,6,"t"],[4,5,2,"a"],[7,4,3,"a"],[6,5,2,"a"],[7,1,2,"a"],[7,2,2,"a"]],[[0,0,4,2],[0,2,2,3],[0,5,4,1],[0,6,3,2],[2,2,5,2],[2,4,3,1],[3,6,5,1],[3,7,5,1],[4,0,3,2],[4,5,2,1],[5,4,3,1],[6,5,2,1],[7,0,1,2],[7,2,1,2]],[0,8,5,3,5,3,2,1,1,0,1,3,4,0],9],[8,[[0,0,4,"s"],[0,4,3,"w"],[2,5,6,"t"],[2,7,7,"a"],[4,3,8,"a"],[5,4,7,"a"],[6,1,10,"t"],[5,5,5,"a"],[3,6,2,"a"],[7,2,3,"t"],[7,3,3,"a"],[5,6,2,"a"],[7,1,2,"w"],[7,6,2,"w"]],[[0,0,2,2],[0,2,1,3],[0,5,3,2],[0,7,7,1],[1,2,4,2],[1,4,7,1],[2,0,5,2],[3,5,5,1],[3,6,2,1],[5,2,3,1],[5,3,3,1],[5,6,2,1],[7,0,1,2],[7,6,1,2]],[0,8,5,3,5,3,3,1,0,9,0,2,5,0],10],[8,[[0,1,4,"w"],[5,4,6,"t"],[0,5,5,"a"],[0,6,2,"a"],[1,0,10,"t"],[2,3,4,"a"],[4,6,8,"t"],[3,3,10,"a"],[6,5,9,"a"],[6,1,2,"a"],[7,4,2,"t"],[7,0,2,"w"]],[[0,0,1,4],[0,4,6,1],[0,5,5,1],[0,6,1,2],[1,0,5,2],[1,2,2,2],[1,6,4,2],[3,2,5,2],[5,5,3,3],[6,0,1,2],[6,4,2,1],[7,0,1,2]],[0,8,5,3,2,1,2,0,0,9,7,6],11],[8,[[1,2,9,"a"],[2,3,5,"t"],[3,4,10,"a"],[1,6,6,"a"],[3,1,4,"a"],[4,2,4,"a"],[4,6,5,"t"],[7,7,5,"t"],[5,1,2,"a"],[5,3,4,"s"],[5,5,2,"t"],[7,0,2,"a"],[6,1,2,"t"],[7,3,4,"w"]],[[0,0,3,3],[0,3,5,1],[0,4,5,2],[0,6,3,2],[3,0,2,2],[3,2,4,1],[3,6,5,1],[3,7,5,1],[5,0,1,2],[5,3,2,2],[5,5,2,1],[6,0,2,1],[6,1,2,1],[7,2,1,4]],[0,8,5,3,2,1,2,1,0,0,1,6,2,3],12],[8,[[0,1,10,"a"],[1,5,6,"a"],[3,0,4,"s"],[2,2,8,"a"],[6,4,10,"a"],[2,6,2,"t"],[4,7,3,"t"],[4,0,4,"a"],[5,6,2,"t"],[5,7,3,"a"],[7,0,8,"a"],[6,6,2,"a"],[7,5,2,"a"]],[[0,0,2,5],[0,5,2,3],[2,0,2,2],[2,2,4,2],[2,4,5,2],[2,6,2,1],[2,7,3,1],[4,0,2,2],[4,6,2,1],[5,7,3,1],[6,0,2,4],[6,6,2,1],[7,4,1,2]],[0,8,6,7,1,4,2,1,0,9,8,2,0],13],[8,[[2,1,6,"t"],[0,2,10,"a"],[1,4,6,"a"],[2,7,8,"t"],[2,6,3,"w"],[5,1,6,"a"],[6,4,8,"a"],[4,6,5,"a"],[6,3,4,"a"],[7,1,4,"a"],[7,2,2,"a"],[7,4,2,"w"]],[[0,0,3,2],[0,2,5,2],[0,4,2,3],[0,7,8,1],[2,4,1,3],[3,0,3,2],[3,4,4,2],[3,6,5,1],[5,2,2,2],[6,0,2,2],[7,2,1,2],[7,4,1,2]],[0,8,5,3,0,4,3,2,0,9,7,0],14],[8,[[0,3,5,"w"],[1,5,6,"a"],[1,0,10,"a"],[4,6,8,"a"],[4,7,4,"t"],[3,1,6,"a"],[6,2,8,"t"],[4,4,3,"t"],[7,0,4,"a"],[6,4,4,"s"],[6,6,4,"s"],[7,2,2,"a"]],[[0,0,1,5],[0,5,2,3],[1,0,2,5],[2,5,4,2],[2,7,4,1],[3,0,3,2],[3,2,4,2],[3,4,3,1],[6,0,2,2],[6,4,2,2],[6,6,2,2],[7,2,1,2]],[0,8,7,5,4,9,2,0,0,1,0,3],17],[8,[[1,1,8,"a"],[1,3,4,"s"],[3,5,10,"a"],[1,7,6,"t"],[2,3,2,"a"],[7,3,10,"a"],[3,6,10,"t"],[4,1,2,"a"],[5,1,6,"t"],[5,4,3,"t"],[7,5,3,"t"]],[[0,0,4,2],[0,2,2,2],[0,4,5,2],[0,6,3,2],[2,2,1,2],[3,2,5,2],[3,6,5,2],[4,0,1,2],[5,0,3,2],[5,4,3,1],[5,5,3,1]],[0,8,5,3,1,2,2,3,0,9,0],19],[8,[[0,0,3,"t"],[1,1,10,"a"],[1,7,8,"a"],[3,1,6,"t"],[4,3,8,"t"],[2,5,4,"t"],[4,0,5,"a"],[6,7,8,"t"],[5,1,6,"t"],[7,3,4,"s"],[6,5,2,"t"]],[[0,0,3,1],[0,1,2,5],[0,6,4,2],[2,1,3,2],[2,3,4,2],[2,5,4,1],[3,0,5,1],[4,6,4,2],[5,1,3,2],[6,3,2,2],[6,5,2,1]],[0,8,5,6,4,0,3,2,0,9,1],20],[8,[[0,2,7,"a"],[7,7,8,"t"],[1,5,6,"w"],[3,6,3,"a"],[2,0,4,"a"],[2,4,2,"t"],[2,5,2,"a"],[3,1,10,"a"],[7,3,10,"a"],[6,6,9,"a"],[7,4,3,"w"]],[[0,0,1,7],[0,7,8,1],[1,0,1,6],[1,6,3,1],[2,0,1,4],[2,4,2,1],[2,5,2,1],[3,0,5,2],[3,2,5,2],[4,4,3,3],[7,4,1,3]],[0,8,6,1,1,4,0,5,0,6,1],22],[8,[[4,0,10,"a"],[3,3,8,"a"],[4,4,8,"t"],[0,6,6,"w"],[2,5,9,"s"],[5,3,6,"a"],[6,1,4,"s"],[5,5,3,"t"],[6,6,6,"t"],[7,2,4,"a"]],[[0,0,5,2],[0,2,4,2],[0,4,8,1],[0,5,2,3],[2,5,3,3],[4,2,3,2],[5,0,2,2],[5,5,3,1],[5,6,3,2],[7,0,1,4]],[0,8,5,3,6,1,4,1,0,0],24],[8,[[0,0,9,"a"],[0,3,3,"w"],[1,7,8,"a"],[3,3,6,"a"],[7,5,7,"a"],[5,0,9,"s"],[5,4,8,"a"],[5,7,8,"t"],[6,1,4,"s"],[7,2,2,"a"]],[[0,0,3,3],[0,3,1,3],[0,6,4,2],[1,3,3,2],[1,5,7,1],[3,0,3,3],[4,3,4,2],[4,6,4,2],[6,0,2,2],[6,2,2,1]],[0,8,5,6,0,4,1,2,2,0],28],[8,[[1,2,9,"a"],[3,3,6,"a"],[7,4,8,"t"],[0,6,9,"a"],[4,1,10,"t"],[5,2,3,"t"],[4,7,6,"a"],[5,5,6,"a"],[7,3,4,"s"],[7,7,3,"w"]],[[0,0,3,3],[0,3,6,1],[0,4,8,1],[0,5,3,3],[3,0,5,2],[3,2,3,1],[3,5,2,3],[5,5,2,3],[6,2,2,2],[7,5,1,3]],[0,8,5,3,2,1,2,1,4,9],30],[8,[[0,0,6,"a"],[1,4,9,"s"],[3,6,8,"a"],[3,7,8,"a"],[3,0,6,"t"],[2,2,2,"a"],[3,4,2,"a"],[6,5,5,"t"],[4,2,9,"s"],[6,0,3,"a"],[5,1,2,"a"],[7,4,4,"w"]],[[0,0,2,3],[0,3,3,3],[0,6,8,1],[0,7,8,1],[2,0,3,2],[2,2,2,1],[3,3,1,2],[3,5,5,1],[4,2,3,3],[5,0,3,1],[5,1,2,1],[7,1,1,4]],[0,8,5,3,2,1,3,0,6,0,1,2],31],[8,[[3,0,5,"a"],[0,5,5,"w"],[1,6,5,"a"],[0,7,8,"t"],[4,1,5,"a"],[3,2,10,"a"],[1,4,10,"t"],[5,0,3,"a"],[5,6,3,"t"],[7,2,10,"a"]],[[0,0,5,1],[0,1,1,5],[0,6,5,1],[0,7,8,1],[1,1,5,1],[1,2,5,2],[1,4,5,2],[5,0,3,1],[5,6,3,1],[6,1,2,5]],[0,8,5,3,5,3,0,2,1,8],32],[8,[[0,0,4,"s"],[2,3,10,"a"],[0,7,8,"a"],[2,0,6,"a"],[3,4,4,"a"],[4,6,10,"t"],[4,7,5,"a"],[6,1,4,"a"],[6,3,6,"t"],[7,4,2,"t"],[7,0,2,"w"],[7,6,3,"a"]],[[0,0,2,2],[0,2,5,2],[0,4,2,4],[2,0,3,2],[2,4,4,1],[2,5,5,2],[2,7,5,1],[5,0,2,2],[5,2,3,2],[6,4,2,1],[7,0,1,2],[7,5,1,3]],[0,8,5,6,4,3,2,4,0,1,8,0],34],[8,[[3,1,10,"t"],[0,3,6,"a"],[0,6,6,"a"],[2,7,4,"t"],[3,4,9,"s"],[3,3,8,"a"],[7,7,4,"t"],[5,0,4,"a"],[5,5,6,"w"],[7,4,7,"a"]],[[0,0,5,2],[0,2,3,2],[0,4,2,3],[0,7,4,1],[2,4,3,3],[3,2,4,2],[4,7,4,1],[5,0,2,2],[5,4,2,3],[7,0,1,7]],[0,8,5,3,0,4,4,2,1,0],36],[8,[[2,0,4,"a"],[1,2,6,"w"],[2,5,9,"s"],[1,7,3,"a"],[2,2,3,"a"],[3,1,10,"t"],[3,6,4,"a"],[5,7,5,"a"],[5,0,4,"t"],[5,3,2,"a"],[5,4,2,"t"],[6,6,8,"a"],[6,3,2,"a"],[7,3,2,"a"]],[[0,0,4,1],[0,1,2,3],[0,4,3,3],[0,7,3,1],[2,1,1,3],[3,1,5,2],[3,3,1,4],[3,7,5,1],[4,0,4,1],[4,3,2,1],[4,4,2,1],[4,5,4,2],[6,3,1,2],[7,3,1,2]],[0,8,5,3,1,5,3,5,1,9,7,0,1,2],42],[8,[[1,2,8,"a"],[2,5,6,"a"],[2,7,8,"a"],[5,0,6,"a"],[4,2,9,"a"],[5,4,3,"t"],[5,5,5,"a"],[6,7,8,"a"],[5,2,2,"w"],[5,3,2,"t"],[6,2,2,"w"],[7,4,2,"a"],[7,2,3,"a"]],[[0,0,2,4],[0,4,3,2],[0,6,4,2],[2,0,6,1],[2,1,3,3],[3,4,3,1],[3,5,5,1],[4,6,4,2],[5,1,1,2],[5,3,2,1],[6,1,1,2],[6,4,2,1],[7,1,1,3]],[0,8,5,4,1,4,0,2,0,2,1,1,0],44],[8,[[0,0,2,"a"],[0,2,6,"a"],[1,0,4,"a"],[2,5,10,"a"],[5,7,7,"t"],[4,0,5,"a"],[4,4,8,"a"],[5,6,10,"a"],[5,1,6,"t"],[7,4,6,"t"]],[[0,0,1,2],[0,2,1,6],[1,0,2,2],[1,2,2,5],[1,7,7,1],[3,0,5,1],[3,1,2,4],[3,5,5,2],[5,1,3,2],[5,3,3,2]],[0,8,6,5,4,9,0,1,1,9],46],[8,[[2,0,9,"s"],[0,4,4,"a"],[0,5,2,"t"],[1,7,6,"a"],[2,3,4,"t"],[2,5,2,"w"],[6,1,10,"a"],[7,2,5,"a"],[5,6,9,"a"],[6,7,5,"a"],[7,4,4,"s"],[6,6,4,"a"]],[[0,0,3,3],[0,3,2,2],[0,5,2,1],[0,6,3,2],[2,3,4,1],[2,4,1,2],[3,0,5,2],[3,2,5,1],[3,4,3,3],[3,7,5,1],[6,3,2,2],[6,5,2,2]],[0,8,5,3,5,0,7,1,1,9,8,0],60],[8,[[0,1,7,"a"],[1,7,7,"t"],[1,2,5,"a"],[3,5,6,"a"],[2,0,4,"s"],[2,3,2,"w"],[5,4,4,"a"],[4,2,6,"a"],[6,0,6,"t"],[4,5,6,"a"],[6,2,4,"a"],[6,4,2,"t"],[7,1,2,"w"],[7,6,3,"w"]],[[0,0,1,7],[0,7,7,1],[1,0,1,5],[1,5,3,2],[2,0,2,2],[2,2,1,2],[2,4,4,1],[3,2,3,2],[4,0,3,2],[4,5,3,2],[6,2,2,2],[6,4,2,1],[7,0,1,2],[7,5,1,3]],[0,8,6,1,1,4,0,2,0,2,8,1,5,0],63],[8,[[0,0,2,"w"],[0,6,10,"a"],[5,7,8,"t"],[2,0,6,"t"],[3,2,6,"a"],[4,5,8,"a"],[5,1,8,"t"],[5,4,6,"w"],[7,2,2,"a"],[6,3,4,"a"],[7,6,4,"s"]],[[0,0,1,2],[0,2,2,5],[0,7,8,1],[1,0,3,2],[2,2,2,3],[2,5,4,2],[4,0,4,2],[4,2,2,3],[6,2,2,1],[6,3,2,2],[6,5,2,2]],[0,8,5,6,4,0,7,1,0,9,1],79],[8,[[2,0,4,"a"],[1,2,4,"s"],[2,3,6,"a"],[1,5,8,"w"],[2,1,8,"t"],[2,5,4,"s"],[2,7,4,"a"],[5,0,2,"a"],[4,6,4,"a"],[5,5,6,"a"],[6,6,4,"a"],[6,2,8,"a"],[7,6,2,"w"]],[[0,0,4,1],[0,1,2,2],[0,3,6,1],[0,4,2,4],[2,1,4,2],[2,4,2,2],[2,6,2,2],[4,0,2,1],[4,4,1,4],[5,4,3,2],[5,6,2,2],[6,0,2,4],[7,6,1,2]],[0,8,5,3,1,4,2,3,0,9,7,8,4],166],[9,[[1,1,12,"w"],[4,4,7,"t"],[4,5,10,"a"],[1,7,6,"t"],[1,8,7,"a"],[4,0,8,"a"],[5,1,4,"w"],[5,5,2,"a"],[6,2,9,"s"],[8,3,3,"a"],[6,5,4,"s"],[8,7,3,"a"],[7,4,2,"t"],[8,8,2,"a"],[8,5,2,"a"]],[[0,0,3,4],[0,4,7,1],[0,5,5,2],[0,7,6,1],[0,8,7,1],[3,0,2,4],[5,0,1,4],[5,5,1,2],[6,0,3,3],[6,3,3,1],[6,5,2,2],[6,7,3,1],[7,4,2,1],[7,8,2,1],[8,5,1,2]],[0,8,5,3,1,4,2,0,3,0,7,0,1,5,2],9],[9,[[5,0,12,"t"],[1,3,6,"w"],[2,5,12,"t"],[5,8,9,"a"],[5,2,4,"t"],[6,3,7,"t"],[3,4,2,"a"],[6,4,10,"a"],[4,6,4,"a"],[4,7,2,"a"],[7,2,6,"w"],[6,7,2,"t"],[8,1,3,"w"],[8,6,2,"w"]],[[0,0,6,2],[0,2,2,3],[0,5,4,3],[0,8,9,1],[2,2,4,1],[2,3,7,1],[2,4,2,1],[4,4,5,2],[4,6,4,1],[4,7,2,1],[6,0,2,3],[6,7,2,1],[8,0,1,3],[8,6,1,2]],[0,8,5,3,5,3,0,1,0,1,1,2,6,5],12],[9,[[1,1,12,"t"],[0,3,12,"t"],[1,5,8,"a"],[4,8,12,"w"],[8,1,10,"a"],[6,2,3,"a"],[5,5,4,"s"],[8,8,8,"a"],[8,3,6,"a"],[8,2,2,"a"],[8,5,4,"s"]],[[0,0,4,3],[0,3,6,2],[0,5,2,4],[2,5,3,4],[4,0,5,2],[4,2,3,1],[5,5,2,2],[5,7,4,2],[6,3,3,2],[7,2,2,1],[7,5,2,2]],[0,8,5,6,2,1,2,1,0,3,3],13],[9,[[0,1,4,"s"],[1,2,9,"t"],[2,5,9,"s"],[4,7,10,"t"],[8,8,9,"a"],[4,1,10,"t"],[6,3,12,"a"],[3,5,3,"t"],[5,6,6,"a"],[8,5,3,"a"],[7,0,4,"a"],[8,6,2,"w"]],[[0,0,2,2],[0,2,9,1],[0,3,3,3],[0,6,5,2],[0,8,9,1],[2,0,5,2],[3,3,6,2],[3,5,3,1],[5,6,3,2],[6,5,3,1],[7,0,2,2],[8,6,1,2]],[0,8,5,3,1,4,2,0,2,9,7,0],19],[9,[[4,1,10,"a"],[1,2,5,"t"],[0,3,8,"a"],[0,6,10,"a"],[0,7,7,"t"],[0,8,4,"t"],[4,4,6,"a"],[8,8,5,"a"],[5,0,6,"w"],[6,5,6,"a"],[7,0,2,"t"],[7,3,3,"a"],[7,4,2,"a"],[8,7,2,"t"],[8,1,3,"w"],[8,5,2,"w"]],[[0,0,5,2],[0,2,5,1],[0,3,4,2],[0,5,5,2],[0,7,7,1],[0,8,4,1],[4,3,3,2],[4,8,5,1],[5,0,2,3],[5,5,3,2],[7,0,2,1],[7,1,1,3],[7,4,2,1],[7,7,2,1],[8,1,1,3],[8,5,1,2]],[0,8,5,3,1,9,0,2,1,2,8,2,6,5,0,0],23],[9,[[2,0,5,"a"],[3,2,12,"a"],[2,3,3,"a"],[0,4,12,"w"],[3,8,4,"t"],[6,5,12,"a"],[6,6,8,"a"],[6,8,3,"a"],[8,0,4,"t"],[7,1,2,"t"],[6,2,2,"a"],[8,5,10,"a"],[8,8,2,"t"],[8,1,2,"a"]],[[0,0,5,1],[0,1,6,2],[0,3,3,1],[0,4,3,4],[0,8,4,1],[3,3,4,3],[3,6,4,2],[4,8,3,1],[5,0,4,1],[6,1,2,1],[6,2,2,1],[7,3,2,5],[7,8,2,1],[8,1,1,2]],[0,8,5,3,1,0,2,3,1,9,1,3,4,0],23],[9,[[1,0,6,"t"],[1,6,10,"a"],[5,7,9,"t"],[0,8,3,"a"],[2,2,12,"a"],[4,6,12,"a"],[3,0,10,"a"],[4,8,2,"t"],[6,8,2,"t"],[6,3,6,"t"],[7,4,3,"t"],[8,8,2,"a"],[8,1,2,"w"],[8,6,2,"w"]],[[0,0,3,2],[0,2,2,5],[0,7,9,1],[0,8,3,1],[2,2,4,3],[2,5,6,2],[3,0,5,2],[3,8,2,1],[5,8,2,1],[6,2,3,2],[6,4,3,1],[7,8,2,1],[8,0,1,2],[8,5,1,2]],[0,8,5,3,5,3,3,1,0,9,0,7,5,1],26],[9,[[0,4,5,"a"],[4,5,7,"a"],[0,7,10,"t"],[1,8,7,"t"],[1,0,8,"a"],[2,1,8,"t"],[3,2,9,"s"],[4,2,10,"t"],[7,4,5,"t"],[7,7,8,"a"],[8,5,2,"a"],[8,8,2,"a"]],[[0,0,1,5],[0,5,7,1],[0,6,5,2],[0,8,7,1],[1,0,8,1],[1,1,8,1],[1,2,3,3],[4,2,5,2],[4,4,5,1],[5,6,4,2],[7,5,2,1],[7,8,2,1]],[0,8,5,3,2,5,1,2,0,0,7,7],30],[9,[[0,0,5,"a"],[0,5,7,"a"],[0,6,6,"a"],[0,7,12,"a"],[3,2,9,"s"],[2,4,4,"s"],[6,4,8,"t"],[5,0,12,"t"],[6,6,3,"a"],[8,7,12,"a"],[8,0,3,"w"]],[[0,0,1,5],[0,5,7,1],[0,6,6,1],[0,7,6,2],[1,0,3,3],[1,3,2,2],[3,3,4,2],[4,0,4,3],[6,6,1,3],[7,3,2,6],[8,0,1,3]],[0,8,5,3,2,1,0,3,0,1,8],32],[9,[[5,0,12,"t"],[3,2,8,"a"],[5,4,6,"t"],[1,5,9,"a"],[1,6,6,"a"],[5,8,7,"a"],[8,6,12,"t"],[7,2,5,"a"],[5,3,4,"t"],[8,0,6,"a"],[6,4,2,"a"],[7,8,2,"t"],[8,4,2,"a"]],[[0,0,6,2],[0,2,4,2],[0,4,6,1],[0,5,9,1],[0,6,3,2],[0,8,7,1],[3,6,6,2],[4,2,5,1],[4,3,4,1],[6,0,3,2],[6,4,2,1],[7,8,2,1],[8,3,1,2]],[0,8,5,3,1,9,0,2,0,9,1,6,4],35],[9,[[1,0,8,"t"],[1,1,10,"a"],[3,6,10,"a"],[6,8,9,"a"],[3,2,6,"a"],[5,4,8,"a"],[3,5,3,"t"],[5,2,6,"t"],[5,6,6,"w"],[6,3,6,"a"],[7,5,6,"a"],[8,2,3,"a"]],[[0,0,8,1],[0,1,2,5],[0,6,5,2],[0,8,9,1],[2,1,3,2],[2,3,4,2],[2,5,3,1],[5,1,3,2],[5,5,2,3],[6,3,3,2],[7,5,2,3],[8,0,1,3]],[0,8,5,3,5,3,0,1,1,9,0,2],37],[9,[[8,0,9,"t"],[1,1,8,"a"],[4,5,10,"t"],[1,8,8,"a"],[4,1,12,"t"],[5,3,12,"a"],[5,7,5,"t"],[7,8,5,"a"],[6,6,6,"t"],[8,1,4,"a"],[8,6,2,"w"]],[[0,0,9,1],[0,1,2,4],[0,5,5,2],[0,7,4,2],[2,1,6,2],[2,3,6,2],[4,7,5,1],[4,8,5,1],[5,5,3,2],[8,1,1,4],[8,5,1,2]],[0,8,5,3,5,3,2,1,0,1,3],40],[9,[[0,7,8,"w"],[5,8,6,"a"],[4,1,12,"t"],[1,4,9,"s"],[1,5,12,"a"],[1,7,2,"a"],[6,7,6,"a"],[7,3,10,"a"],[5,4,3,"a"],[6,8,3,"a"],[8,1,4,"a"],[7,4,2,"w"],[7,6,2,"t"],[8,5,2,"a"]],[[0,0,1,8],[0,8,6,1],[1,0,6,2],[1,2,3,3],[1,5,6,2],[1,7,2,1],[3,7,6,1],[4,2,5,2],[4,4,3,1],[6,8,3,1],[7,0,2,2],[7,4,1,2],[7,6,2,1],[8,4,1,2]],[0,8,6,7,5,1,0,1,0,9,8,2,1,5],44],[9,[[5,0,12,"t"],[0,2,6,"t"],[4,4,7,"t"],[0,6,6,"a"],[1,8,10,"a"],[3,3,10,"a"],[3,5,2,"a"],[5,6,6,"t"],[7,5,4,"t"],[6,8,4,"a"],[8,0,6,"t"],[7,4,2,"a"],[7,7,2,"t"],[8,8,2,"t"],[8,2,2,"a"]],[[0,0,6,2],[0,2,3,2],[0,4,7,1],[0,5,3,2],[0,7,5,2],[3,2,5,2],[3,5,2,1],[3,6,6,1],[5,5,4,1],[5,7,2,2],[6,0,3,2],[7,4,2,1],[7,7,2,1],[7,8,2,1],[8,2,1,2]],[0,8,5,3,1,1,2,0,1,9,8,7,5,3,0],53],[9,[[1,4,10,"a"],[1,8,8,"a"],[2,0,3,"a"],[3,3,12,"a"],[2,5,4,"a"],[2,7,12,"a"],[4,6,6,"a"],[7,3,12,"a"],[5,4,4,"t"],[7,5,2,"t"],[7,6,2,"a"],[8,0,2,"a"],[8,2,2,"a"],[8,7,2,"w"]],[[0,0,2,5],[0,5,2,4],[2,0,3,1],[2,1,3,4],[2,5,2,2],[2,7,6,2],[4,5,3,2],[5,0,3,4],[5,4,4,1],[7,5,2,1],[7,6,2,1],[8,0,1,2],[8,2,1,2],[8,7,1,2]],[0,8,6,7,4,3,0,1,2,9,1,6,0,5],57],[9,[[0,1,4,"a"],[0,4,3,"a"],[7,7,9,"a"],[1,8,2,"t"],[1,2,6,"w"],[3,4,12,"w"],[3,8,5,"a"],[6,0,4,"a"],[4,1,6,"t"],[5,2,6,"t"],[4,3,8,"a"],[4,6,8,"a"],[7,0,2,"t"],[8,8,2,"t"],[8,4,2,"a"],[8,5,2,"a"]],[[0,0,1,4],[0,4,1,3],[0,7,9,1],[0,8,2,1],[1,0,2,3],[1,3,3,4],[2,8,5,1],[3,0,4,1],[3,1,6,1],[3,2,6,1],[4,3,4,2],[4,5,4,2],[7,0,2,1],[7,8,2,1],[8,3,1,2],[8,5,1,2]],[0,8,5,3,2,9,2,5,0,1,7,0,6,4,3,1],65],[9,[[3,0,9,"a"],[1,1,6,"t"],[1,4,4,"s"],[4,5,10,"a"],[1,7,2,"a"],[0,8,3,"a"],[2,3,12,"a"],[2,7,2,"a"],[3,1,12,"a"],[4,8,4,"a"],[7,7,5,"a"],[7,6,8,"t"],[7,8,2,"a"],[8,4,2,"a"]],[[0,0,9,1],[0,1,3,2],[0,3,2,2],[0,5,5,2],[0,7,2,1],[0,8,3,1],[2,3,6,2],[2,7,2,1],[3,1,6,2],[3,8,4,1],[4,7,5,1],[5,5,4,2],[7,8,2,1],[8,3,1,2]],[0,8,5,3,1,9,0,0,1,8,1,2,5,3],74],[9,[[0,6,8,"a"],[3,8,5,"a"],[2,0,12,"a"],[1,5,6,"a"],[5,7,10,"a"],[3,3,3,"w"],[5,3,9,"s"],[8,1,12,"t"],[6,8,4,"a"],[8,7,6,"t"],[8,5,6,"a"]],[[0,0,1,8],[0,8,5,1],[1,0,4,3],[1,3,2,3],[1,6,5,2],[3,3,1,3],[4,3,3,3],[5,0,4,3],[5,8,4,1],[6,6,3,2],[7,3,2,3]],[0,8,6,7,1,0,2,1,0,3,0],99],[9,[[1,1,4,"s"],[1,4,12,"a"],[6,8,7,"a"],[2,3,8,"w"],[4,2,12,"a"],[4,7,12,"a"],[7,0,4,"a"],[6,2,12,"w"],[8,8,2,"a"],[8,3,6,"a"],[8,7,2,"a"]],[[0,0,2,2],[0,2,2,6],[0,8,7,1],[2,0,1,8],[3,0,3,4],[3,4,3,4],[6,0,2,2],[6,2,2,6],[7,8,2,1],[8,0,1,6],[8,6,1,2]],[0,8,5,1,2,0,7,3,0,9,1],134],[9,[[1,1,9,"a"],[3,4,12,"t"],[0,5,6,"a"],[2,8,8,"a"],[6,0,8,"t"],[5,2,3,"a"],[4,6,12,"a"],[7,8,8,"a"],[7,4,6,"a"],[8,0,4,"a"],[8,4,3,"a"],[8,7,2,"w"]],[[0,0,3,3],[0,3,6,2],[0,5,3,2],[0,7,4,2],[3,0,4,2],[3,2,3,1],[3,5,6,2],[4,7,4,2],[6,2,2,3],[7,0,2,2],[8,2,1,3],[8,7,1,2]],[0,8,5,3,2,1,0,2,5,9,1,7],364]];
+/* The password's fingerprint (and the sealed sync key, once there is one) — shared by every game. */
+const LOCK = {"hash":"0d444a2fab722e9371330219820f5816b18ffb8fa9fab2b27190304051b4e030","salt":"/TxtlwKIj6SAI+Zacj8YMg==","iter":310000,"sync":null};
+
+/* One password for every game. It's typed once on the Games page; after that this device remembers it.
+   A game page opened on a device that doesn't know it is sent to the Games page to type it. */
+const Lock = (() => {
+  "use strict";
+  const KEYS = ["games:pw", "crowns:pw"];   // crowns:pw — devices that unlocked Crowns before Games existed
+  const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  function get() {
+    for (const k of KEYS) { try { const v = localStorage.getItem(k); if (v) return v; } catch (e) {} }
+    return null;
+  }
+  function set(pw) { try { localStorage.setItem(KEYS[0], pw); } catch (e) {} }
+  function forget() { for (const k of KEYS) { try { localStorage.removeItem(k); } catch (e) {} } }
+  async function check(pw) {
+    if (!pw || !window.crypto || !crypto.subtle) return false;
+    const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
+    return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("") === LOCK.hash;
+  }
+  /* The sync key is sealed with the password so it can't be lifted from the page source. */
+  async function syncKey(pw) {
+    if (!LOCK.sync) return null;
+    try {
+      const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+      const key = await crypto.subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", salt: b64(LOCK.salt), iterations: LOCK.iter },
+        base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+      const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(LOCK.sync.iv) }, key, b64(LOCK.sync.ct));
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch (e) { return null; }
+  }
+  async function enter() {
+    const pw = get();
+    if (await check(pw)) return { pw, sync: await syncKey(pw) };
+    location.replace("games.html");
+    return new Promise(() => {});
+  }
+  return { get, set, forget, check, syncKey, enter };
+})();
+
+
+Lock.enter().then(({ sync }) => {
+  document.getElementById("game").hidden = false;
+  document.getElementById("levelsBtn").hidden = false;
+  startGame(LEVELS, sync, () => { Lock.forget(); location.href = "games.html"; });
+});
+
+function startGame(LEVELS, SYNC, lock) {
+  "use strict";
+  const PALETTE = ["#f4b6a6", "#f7d98b", "#bfe0a6", "#9fcde8", "#cdb8ea", "#f5b3cf", "#a9ddd3", "#e3c9a8", "#b7c3f0", "#dce59a"];
+  const STORE = "plots:v1";
+  const SYNC_FILE = "plots.json";
+  const $ = (id) => document.getElementById(id);
+  const boardEl = $("board");
+  let press = null, won = false, L = 0;
+  /* Shared by every game: progress kept on this device, and synced through GitHub once there's a key.
+     Each game defines STORE (its localStorage key) and SYNC_FILE (its file in the repository) first, and
+     openLevel, startLevel, press, won, L, $, fmt for it to use. */
+  /* What's kept, here and in the synced file:
+       done[level]   = [best seconds, when it was solved]
+       boards[level] = { m: marks, t: seconds, h: hints, at: when last changed }  (a level in progress)
+       auto, cur, prefsAt — settings and the level you're on, newest wins
+       resetAt — "reset all progress": anything older than this is gone on every device */
+  const blank = () => ({ done: {}, boards: {}, auto: false, cur: 0, prefsAt: 0, resetAt: 0 });
+  function tidy(s) {
+    const out = { ...blank(), ...(s && typeof s === "object" ? s : {}) };
+    for (const k in out.done) if (!Array.isArray(out.done[k])) out.done[k] = [+out.done[k] || 1, 0];
+    for (const k in out.boards) out.boards[k] = { at: 0, ...out.boards[k] };
+    return out;
+  }
+  let save = load();
+  function load() {
+    try { return tidy(JSON.parse(localStorage.getItem(STORE))); } catch (e) { return blank(); }
+  }
+  function persist() { try { localStorage.setItem(STORE, JSON.stringify(save)); } catch (e) {} }
+  const bestOf = (i) => (save.done[i] ? save.done[i][0] : null);
+
+  /* Two copies of progress → one. Best times take the fastest, levels in progress take the most
+     recently touched, and a level's half-done board is dropped once it's been solved since. */
+  function merge(a, b) {
+    a = tidy(a); b = tidy(b);
+    const out = blank();
+    out.resetAt = Math.max(a.resetAt, b.resetAt);
+    for (const src of [a, b]) for (const k in src.done) {
+      const [t, at] = src.done[k];
+      if (at < out.resetAt && at !== 0) continue;
+      const cur = out.done[k];
+      out.done[k] = cur ? [Math.min(cur[0], t), Math.max(cur[1], at)] : [t, at];
+    }
+    for (const src of [a, b]) for (const k in src.boards) {
+      const bd = src.boards[k], cur = out.boards[k];
+      if (bd.at < out.resetAt) continue;
+      if (!cur || bd.at > cur.at || (bd.at === cur.at && (bd.t || 0) > (cur.t || 0))) out.boards[k] = bd;
+    }
+    for (const k in out.boards) if (out.done[k] && out.done[k][1] >= out.boards[k].at) delete out.boards[k];
+    const p = b.prefsAt > a.prefsAt ? b : a;
+    out.auto = !!p.auto; out.cur = p.cur; out.prefsAt = p.prefsAt;
+    return out;
+  }
+
+  /* ---- Sync: one JSON file in a private GitHub repository, read on unlock and whenever the page
+     comes back into view, written a moment after each change. Without a key it all stays on this device. ---- */
+  const sync = { on: !!(SYNC && SYNC.token), sha: null, timer: 0, busy: false, again: false, state: "off", touched: false };
+  const ghUrl = () => `https://api.github.com/repos/${SYNC.repo}/contents/${SYNC_FILE}`;
+  const ghHead = () => ({ Authorization: "Bearer " + SYNC.token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
+  const enc64 = (str) => btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+  const dec64 = (b) => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g, "")), (c) => c.charCodeAt(0)));
+  function setSync(state) {
+    sync.state = state;
+    const el = document.getElementById("syncLine");
+    if (el) el.innerHTML = syncText();
+  }
+  function syncText() {
+    const t = { off: ["", "Saved on this device only"], busy: ["busy", "Syncing…"], ok: ["ok", "Synced across your devices"],
+                offline: ["bad", "Offline — saved here, will sync later"], key: ["bad", "Sync key isn't working"] }[sync.state];
+    return `<span class="syncdot ${t[0]}"></span>${t[1]}`;
+  }
+  async function ghGet() {
+    const r = await fetch(ghUrl() + "?t=" + Date.now(), { headers: ghHead(), cache: "no-store" });
+    if (r.status === 404) return { data: null, sha: null };
+    if (r.status === 401 || r.status === 403) throw { key: true };
+    if (!r.ok) throw new Error("get " + r.status);
+    const j = await r.json();
+    return { data: JSON.parse(dec64(j.content)), sha: j.sha };
+  }
+  async function ghPut(data, sha, keepalive) {
+    const body = { message: "Progress", content: enc64(JSON.stringify(data)) };
+    if (sha) body.sha = sha;
+    const r = await fetch(ghUrl(), { method: "PUT", headers: { ...ghHead(), "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: !!keepalive });
+    if (r.status === 409 || r.status === 422) throw { conflict: true };
+    if (r.status === 401 || r.status === 403 || r.status === 404) throw { key: true };
+    if (!r.ok) throw new Error("put " + r.status);
+    return (await r.json()).content.sha;
+  }
+  /* Fetch the file and fold it in. Returns true if anything here changed. */
+  async function pull() {
+    const { data, sha } = await ghGet();
+    sync.sha = sha;
+    if (!data) return { changed: false, remoteSame: false };
+    const before = JSON.stringify(save);
+    save = merge(save, data);
+    const after = JSON.stringify(save);
+    if (after !== before) persist();
+    return { changed: after !== before, remoteSame: JSON.stringify(tidy(data)) === after };
+  }
+  async function push(keepalive) {
+    if (!sync.on) return;
+    if (sync.busy) { sync.again = true; return; }
+    sync.busy = true; clearTimeout(sync.timer); setSync("busy");
+    try {
+      for (let k = 0; ; k++) {
+        try { sync.sha = await ghPut(save, sync.sha, keepalive); break; }
+        catch (e) { if (!e || !e.conflict || k > 3) throw e; const p = await pull(); if (p.changed) refreshFromSync(); }
+      }
+      setSync("ok");
+    } catch (e) {
+      setSync(e && e.key ? "key" : "offline");
+      sync.timer = setTimeout(push, e && e.key ? 60000 : 15000);
+    } finally {
+      sync.busy = false;
+      if (sync.again) { sync.again = false; schedulePush(); }
+    }
+  }
+  function schedulePush(ms = 2500) { if (!sync.on) return; clearTimeout(sync.timer); sync.timer = setTimeout(push, ms); }
+  async function syncNow() {
+    if (!sync.on || sync.busy) return;
+    setSync("busy");
+    try {
+      const p = await pull();
+      if (p.changed) refreshFromSync();
+      if (!p.remoteSame) await push(); else setSync("ok");
+    } catch (e) { setSync(e && e.key ? "key" : "offline"); }
+  }
+  /* After progress arrives from another device: if nothing's been played here since, pick up where
+     that device left off; otherwise just refresh what's on screen. */
+  function refreshFromSync() {
+    if (press || won) return;
+    if (!sync.touched) { openLevel(startLevel(), true); return; }
+    $("best").textContent = bestOf(L) != null ? `Best ${fmt(bestOf(L))}` : "";
+  }
+  async function firstPull() { await syncNow(); }
+  document.addEventListener("visibilitychange", () => {
+    if (!sync.on) return;
+    if (document.hidden) { if (sync.timer && !sync.busy) push(true); }
+    else { sync.touched = false; syncNow(); }
+  });
+  setSync(sync.on ? "busy" : "off");
+
+
+  /* ---- Level state: the plots drawn so far, as [top, left, height, width] ---- */
+  let n, clues, answer, colours, plots, history, elapsed, running, hints;
+  const enc = (ps) => ps.map((p) => p.join(".")).join(",");
+  const dec = (s) => (s ? s.split(",").map((t) => t.split(".").map(Number)) : []);
+  const shapeOf = (h, w) => (h === w ? "s" : w > h ? "w" : "t");
+  const inside = (p, r, c) => r >= p[0] && r < p[0] + p[2] && c >= p[1] && c < p[1] + p[3];
+  const overlaps = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+
+  function openLevel(i, quiet) {
+    L = i;
+    if (save.cur !== i) { save.cur = i; save.prefsAt = Date.now(); if (!quiet) schedulePush(); }
+    const [size, cl, ans, cols, score] = LEVELS[i];
+    n = size; clues = cl; answer = ans; colours = cols;
+    const kept = save.boards[i];
+    plots = kept ? dec(kept.m) : [];
+    elapsed = kept ? kept.t || 0 : 0; hints = kept ? kept.h || 0 : 0;
+    history = []; won = false; running = false;
+
+    $("lvTitle").textContent = `Level ${i + 1}`;
+    $("lvSize").textContent = `${n} × ${n}`;
+    const stars = score < 12 ? 1 : score < 25 ? 2 : score < 45 ? 3 : 4;
+    $("diff").innerHTML = [1, 2, 3, 4].map((k) => `<i class="${k <= stars ? "on" : ""}"></i>`).join("") +
+      `<span style="margin-left:5px">${["", "Gentle", "Steady", "Tricky", "Fiendish"][stars]}</span>`;
+    $("best").textContent = bestOf(i) != null ? `Best ${fmt(bestOf(i))}` : "";
+    boardEl.style.setProperty("--n", n);
+    boardEl.classList.remove("won");
+    render();
+    tickClock();
+    persist();
+  }
+
+  /* ---- Checking: a plot is right when it holds exactly one clue, of its size and shape ---- */
+  function judge(p) {
+    const inside_ = clues.map((q, k) => k).filter((k) => inside(p, clues[k][0], clues[k][1]));
+    if (inside_.length !== 1) return { k: inside_[0], ok: false, empty: inside_.length === 0 };
+    const [, , a, hint] = clues[inside_[0]];
+    return { k: inside_[0], ok: p[2] * p[3] === a && (hint === "a" || hint === shapeOf(p[2], p[3])) };
+  }
+
+  function render(preview) {
+    let html = "";
+    let allOk = true, covered = 0;
+    plots.forEach((p, idx) => {
+      const j = judge(p);
+      covered += p[2] * p[3];
+      if (!j.ok) allOk = false;
+      const col = j.k !== undefined ? PALETTE[colours[j.k]] : "";
+      html += `<div class="plot${j.empty ? " empty" : ""}${j.ok ? "" : " bad"}" data-i="${idx}" style="--y:${p[0]};--x:${p[1]};--h:${p[2]};--w:${p[3]};--k:${idx};${col ? `--c:${col}` : ""}"></div>`;
+    });
+    if (preview) {
+      const [r, c, h, w] = preview;
+      html += `<div class="plot preview" style="--y:${r};--x:${c};--h:${h};--w:${w}"><span>${w >= 3 ? `${h} × ${w} = ` : ""}${h * w}</span></div>`;
+    }
+    clues.forEach(([r, c, a, hint], k) => {
+      const shape = hint === "a" ? "" : `<i class="${hint}"></i>`;
+      html += `<div class="clue" style="--y:${r};--x:${c}"><b style="--c:${PALETTE[colours[k]]}">${a}${shape}</b></div>`;
+    });
+    boardEl.innerHTML = html;
+    $("undo").disabled = !history.length || won;
+    if (!won && !preview && allOk && covered === n * n && plots.length === clues.length) win();
+  }
+
+  /* ---- Moves ---- */
+  function snapshot() { history.push(enc(plots)); if (history.length > 400) history.shift(); }
+  function changed() {
+    if (!running && !won) { running = true; lastTick = performance.now(); }
+    save.boards[L] = { m: enc(plots), t: Math.floor(elapsed), h: hints, at: Date.now() };
+    sync.touched = true;
+    persist();
+    schedulePush();
+    render();
+  }
+  function cellAt(e) {
+    const b = boardEl.getBoundingClientRect(), size = b.width / n;
+    const c = Math.max(0, Math.min(n - 1, Math.floor((e.clientX - b.left) / size)));
+    const r = Math.max(0, Math.min(n - 1, Math.floor((e.clientY - b.top) / size)));
+    return [r, c];
+  }
+  const box = (a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(a[0] - b[0]) + 1, Math.abs(a[1] - b[1]) + 1];
+
+  /* Drag from one square to another: that rectangle becomes a plot, replacing any it overlaps.
+     Tap a plot: it goes. */
+  boardEl.addEventListener("pointerdown", (e) => {
+    if (won || e.button > 0) return;
+    e.preventDefault();
+    const at = cellAt(e);
+    press = { id: e.pointerId, start: at, cur: at, moved: false };
+    try { boardEl.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  boardEl.addEventListener("pointermove", (e) => {
+    if (!press || e.pointerId !== press.id) return;
+    const at = cellAt(e);
+    if (at[0] === press.cur[0] && at[1] === press.cur[1]) return;
+    press.cur = at; press.moved = true;
+    render(box(press.start, press.cur));
+  });
+  function endPress(e) {
+    if (!press || e.pointerId !== press.id) return;
+    const { start, cur, moved } = press;
+    press = null;
+    if (e.type === "pointercancel") { render(); return; }
+    if (!moved || (start[0] === cur[0] && start[1] === cur[1])) {
+      const idx = plots.findIndex((p) => inside(p, start[0], start[1]));
+      if (idx >= 0) { snapshot(); plots.splice(idx, 1); changed(); }
+      else render();
+      return;
+    }
+    const p = box(start, cur);
+    snapshot();
+    plots = plots.filter((q) => !overlaps(p, q));
+    plots.push(p);
+    changed();
+  }
+  boardEl.addEventListener("pointerup", endPress);
+  boardEl.addEventListener("pointercancel", endPress);
+  boardEl.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  function undo() {
+    if (!history.length || won) return;
+    plots = dec(history.pop());
+    changed();
+  }
+  $("undo").addEventListener("click", undo);
+  document.addEventListener("keydown", (e) => {
+    if (e.key.toLowerCase() === "z" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); undo(); }
+    if (e.key === "Escape") $("pickScrim").hidden = true;
+  });
+  $("clear").addEventListener("click", () => {
+    if (won || !plots.length) return;
+    snapshot(); plots = []; changed(); toast("Cleared — Undo brings it back");
+  });
+
+  /* Hint: puts in one plot from the answer (clearing anything in its way), preferring a clue whose plot is wrong or missing. */
+  $("hint").addEventListener("click", () => {
+    if (won) return;
+    const has = (a) => plots.some((p) => p[0] === a[0] && p[1] === a[1] && p[2] === a[2] && p[3] === a[3]);
+    const missing = answer.map((a, k) => k).filter((k) => !has(answer[k]));
+    if (!missing.length) return;
+    const k = missing[Math.floor(Math.random() * missing.length)], a = answer[k];
+    snapshot();
+    plots = plots.filter((q) => !overlaps(a, q));
+    plots.push([...a]);
+    hints++;
+    changed();
+    const el = boardEl.querySelector(`.plot[data-i="${plots.length - 1}"]`);
+    if (el) el.classList.add("flash");
+  });
+
+  /* ---- Clock ---- */
+  let lastTick = 0;
+  function fmt(s) { s = Math.floor(s); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, "0")}`; }
+  function tickClock() { $("clock").textContent = fmt(elapsed); }
+  setInterval(() => {
+    if (!running || won || document.hidden) return;
+    const now = performance.now();
+    elapsed += (now - lastTick) / 1000; lastTick = now;
+    tickClock();
+    if (save.boards[L]) { save.boards[L].t = Math.floor(elapsed); persist(); }
+  }, 250);
+  document.addEventListener("visibilitychange", () => { lastTick = performance.now(); });
+
+  /* ---- Winning ---- */
+  function win() {
+    won = true; running = false;
+    const t = Math.max(1, Math.floor(elapsed));
+    const prev = bestOf(L);
+    const record = prev == null || t < prev;
+    save.done[L] = [record ? t : prev, Date.now()];
+    delete save.boards[L];
+    persist();
+    push();
+    boardEl.classList.add("won");
+    $("undo").disabled = true;
+    $("winTime").textContent = fmt(t);
+    const bits = [];
+    if (prev == null) bits.push(`Level ${L + 1} done`);
+    else bits.push(record ? `New best — was ${fmt(prev)}` : `Best ${fmt(prev)}`);
+    if (hints) bits.push(`${hints} hint${hints > 1 ? "s" : ""}`);
+    bits.push(`${Object.keys(save.done).length} of ${LEVELS.length} solved`);
+    $("winMeta").textContent = bits.join(" · ");
+    $("next").textContent = L + 1 < LEVELS.length ? "Next level" : "All levels";
+    setTimeout(() => { if (won) { $("winScrim").hidden = false; $("next").focus(); } }, 900);
+  }
+  $("next").addEventListener("click", () => {
+    $("winScrim").hidden = true;
+    if (L + 1 < LEVELS.length) openLevel(L + 1); else showPicker();
+  });
+  $("replay").addEventListener("click", () => {
+    $("winScrim").hidden = true;
+    delete save.boards[L];
+    openLevel(L);
+  });
+
+  /* ---- Level picker ---- */
+  function showPicker() {
+    const done = Object.keys(save.done).length;
+    $("pickCount").innerHTML = `${done} of ${LEVELS.length} solved · <span id="syncLine">${syncText()}</span>`;
+    syncNow();
+    let html = "", lastN = 0;
+    LEVELS.forEach(([size], i) => {
+      if (size !== lastN) { if (lastN) html += "</div>"; html += `<h3>${size} × ${size}</h3><div class="grid">`; lastN = size; }
+      const best = bestOf(i), going = save.boards[i];
+      const cls = ["lv", best != null ? "done" : "", i === L ? "now" : ""].join(" ");
+      const note = best != null ? fmt(best) : going ? "…" : "";
+      html += `<button class="${cls}" data-lv="${i}" style="--sw:${PALETTE[(i * 3) % PALETTE.length]}" type="button" aria-label="Level ${i + 1}${best != null ? ", solved" : ""}">${i + 1}${note ? `<small>${note}</small>` : ""}</button>`;
+    });
+    html += `</div><div class="foot"><button class="linkbtn" id="wipe" type="button">Reset all progress</button><button class="linkbtn" id="lockBtn" type="button">Lock this device</button></div>`;
+    $("pickList").innerHTML = html;
+    $("pickScrim").hidden = false;
+    const now = $("pickList").querySelector(".now");
+    if (now) now.scrollIntoView({ block: "center" });
+  }
+  $("levelsBtn").addEventListener("click", showPicker);
+  $("pickClose").addEventListener("click", () => { $("pickScrim").hidden = true; });
+  $("pickScrim").addEventListener("click", (e) => {
+    if (e.target === $("pickScrim")) { $("pickScrim").hidden = true; return; }
+    const b = e.target.closest(".lv");
+    if (b) { $("pickScrim").hidden = true; $("winScrim").hidden = true; openLevel(+b.dataset.lv); return; }
+    if (e.target.id === "wipe" && confirm("Reset every level's times and progress?")) {
+      const now = Date.now();
+      save = { ...blank(), prefsAt: now, resetAt: now }; persist(); push();
+      $("pickScrim").hidden = true; openLevel(0);
+    }
+    if (e.target.id === "lockBtn") {
+      if (sync.timer && !sync.busy) push(true);
+      lock();
+    }
+  });
+
+  let toastT;
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1900);
+  }
+
+  function startLevel() {
+    const cur = Number.isInteger(save.cur) && save.cur >= 0 && save.cur < LEVELS.length ? save.cur : 0;
+    const first = LEVELS.findIndex((_, i) => save.done[i] == null);
+    return save.done[cur] != null && !save.boards[cur] && first >= 0 ? first : cur;
+  }
+  openLevel(startLevel(), true);
+  if (sync.on) syncNow();
+}
+</script>
+</body>
+</html>
